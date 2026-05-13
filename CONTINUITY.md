@@ -1,10 +1,13 @@
 ## Goal (incl. success criteria)
-Research Baseline.ai as a daily baseline test and drift monitor for AI agents and coding-agent workstations. Success is a blunt go/no-go recommendation, ranked positioning angles, competitor map, smallest paid validation test, risks, kill criteria, and source-backed evidence.
+Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Success is a working local check/known-good/compare loop, OpenClaw MCP install, redacted cloud sync, landing page, dashboard, payment hook, validation notes, and clear launch blockers.
 
 ## Constraints/Assumptions
-- Current workspace is not a git repository, so commit and push steps cannot be completed here.
-- Research was performed as a market/offer bead using the OpenProse kill-gate and offer-smoke-test recipes as workflow guides.
-- No market-size numbers are assumed or fabricated.
+- Repo is now a git repository, but no remote is configured; commit is possible, push is blocked until a remote is added.
+- Bead 6 committed locally as `b00a1a7` before amend; final commit is the current `HEAD`.
+- v0 is a local known-good drift checker, not a broad eval platform.
+- Fast mode must never execute the agent. Full mode requires explicit opt-in for agent execution.
+- Cloud sync must fail closed and export only redacted/hash summaries.
+- Payment checkout is implemented but cannot go live without Stripe secrets, price IDs, or payment links.
 
 ## Key Decisions
 - Broad "LLM observability" positioning is not viable as a solo wedge because incumbent trace/eval platforms already own it.
@@ -15,6 +18,9 @@ Research Baseline.ai as a daily baseline test and drift monitor for AI agents an
 - Current buyers are OpenClaw users, agency owners, CTOs, and founder-CTOs.
 - Drift checks do not need to be deterministic. The core value is detecting behavioral changes across repeated prompts, user/project memory, speed, substance, style, and tool reliability.
 - Personality drift can be scored as behavior drift: verbosity, warmth, directness, sycophancy, pushback, substance consistency, and user-style adherence.
+- Go was selected for the CLI/MCP binary and Cloudflare Workers + Neon for the launch surface.
+- MCP is intentionally limited to seven legible tools.
+- The first dogfood path is: `baseline check`, `baseline known-good mark`, `baseline compare`, `baseline install openclaw`, redacted cloud sync.
 
 ## State
 ### Done
@@ -23,20 +29,23 @@ Research Baseline.ai as a daily baseline test and drift monitor for AI agents an
 - [x] Bead 3: Safety and eval shape for Baseline MCP/CLI
 - [x] Bead 4: Proconsult-attempted product shaping into smallest defensible v0
 - [x] Bead 5: Fixed Proconsult browser login path and incorporated successful consult
+- [x] Bead 6: Implemented and deployed Baseline v0 CLI/MCP, landing page, dashboard, Neon sync, and launch docs
 
 ### Now
-- Bead 5 complete; Proconsult output captured in `PROCONSULT_BASELINE_V0.md` and incorporated into `BASELINE_V0_SHAPE.md`.
+- Bead 6 complete locally and deployed. Latest clean known-good is `post-mcp-clean`.
 
 ### Next
-- Build the first Go CLI/MCP prototype.
-- Create fail-first tests for OpenClaw runner fallback behavior, config lanes, local storage, scrubber behavior, known-good diff, paginated MCP tool hashing, scoring deltas, and alert thresholds.
+- Add Stripe secrets or payment links and verify checkout end-to-end.
+- Add token issuance/rotation UI instead of a single Worker secret.
+- Add scheduled local run instructions or daemon/cron helper.
+- Add alert delivery after the local report earns trust.
+- Refactor Go packages toward the Proconsult-recommended hard boundaries if v0 expands.
 
 ## Open Questions
-- Which OpenClaw config paths and MCP registration flow should be supported first?
-- Which alert destination matters first after OpenClaw native alerts: Slack, GitHub Checks, email, or OpenTelemetry export?
-- What is the smallest useful built-in prompt pack for OpenClaw users, agency owners, and CTOs?
-- Should cloud sync be opt-in during `baseline init`, or a separate `baseline sync on` command only?
-- What is the minimum acceptable dashboard: single workspace timeline, or compare view plus token management?
+- Which Stripe plan IDs or payment links should be used for Pro and Team?
+- Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
+- Should `baseline check --full --run-agent` be dogfooded now, or kept manual until prompt cost/runtime behavior is reviewed?
+- Should token issuance be self-serve in the dashboard or manual for the first ten users?
 
 ## Working Set
 - `/Users/future/.openclaw/workspace/repos/skills-library/recipes/00-kill-gate.prose.md`
@@ -45,6 +54,13 @@ Research Baseline.ai as a daily baseline test and drift monitor for AI agents an
 - `/Users/future/dev/baseline/BASELINE_MVP.md`
 - `/Users/future/dev/baseline/BASELINE_V0_SHAPE.md`
 - `/Users/future/dev/baseline/PROCONSULT_BASELINE_V0.md`
+- `/Users/future/dev/baseline/PROCONSULT_LAUNCH_ARCHITECTURE.md`
+- `/Users/future/dev/baseline/cmd/baseline/main.go`
+- `/Users/future/dev/baseline/internal/baseline`
+- `/Users/future/dev/baseline/web/src/index.ts`
+- `/Users/future/dev/baseline/README.md`
+- `/Users/future/dev/baseline/docs/VALIDATION.md`
+- `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
 
 
 <!-- BEGIN COMPOUND CODEX TOOL MAP -->

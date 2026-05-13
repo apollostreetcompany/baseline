@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "baseline-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-13",
+  "account_id": "3a0bfe287d4dfb27f802ee5d7e4b21e1",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_URL": "https://baseline-ai.ryan-borker.workers.dev"
+  }
+}
