@@ -33,17 +33,15 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 5: Fixed Proconsult browser login path and incorporated successful consult
 - [x] Bead 6: Implemented and deployed Baseline v0 CLI/MCP, landing page, dashboard, Neon sync, and launch docs
 - [x] Bead 7: Repaired OpenProse VM surface and ran attached `.prose.md` recipes with filesystem receipts
+- [x] Bead 8: Consolidated recommendations into sequenced implementation beads
 
 ### Now
-- Bead 7 complete. OpenProse runtime is updated, and recipe outputs are recorded in `docs/OPENPROSE_RUN_RESULTS.md` plus `.prose/runs/`.
+- Bead 8 complete. Recommended changes are consolidated in `docs/plans/2026-05-14-001-feat-baseline-next-beads-plan.md`.
 
 ### Next
-- Add Stripe secrets or payment links and verify checkout end-to-end.
-- Add token issuance/rotation UI instead of a single Worker secret.
-- Add scheduled local run instructions or daemon/cron helper.
-- Add alert delivery after the local report earns trust.
-- Refactor Go packages toward the Proconsult-recommended hard boundaries if v0 expands.
-- Convert legacy skills-library recipes to current `kind: service` / `kind: system` Contract Markdown if they should strict-run without compatibility mode.
+- Bead 9: Activate Stripe Pro checkout with webhook-based entitlement.
+- If Stripe is still blocked, run Bead 12 (local sync outbox) or Bead 13 (MCP safety hardening) first.
+- Later sequence: token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, real dashboard data, release packaging, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
 - Which Stripe plan IDs or payment links should be used for Pro and Team?
@@ -67,6 +65,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
 - `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
 - `/Users/future/dev/baseline/docs/OPENPROSE_RUN_RESULTS.md`
+- `/Users/future/dev/baseline/docs/plans/2026-05-14-001-feat-baseline-next-beads-plan.md`
 - `/Users/future/dev/baseline/.prose/runs/20260514-002532-*`
 
 
