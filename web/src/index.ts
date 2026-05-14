@@ -9,6 +9,9 @@ interface Env {
   STRIPE_PAYMENT_LINK_TEAM?: string;
   APP_URL?: string;
   BASELINE_API_TOKEN?: string;
+  BASELINE_ADMIN_TOKEN?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_EVALUATOR_MODEL?: string;
 }
 
 type RunPayload = {
@@ -34,14 +37,28 @@ type RunPayload = {
   }>;
 };
 
+type CanonicalQuestionSet = {
+  slug: string;
+  version: string;
+  title: string;
+  questions: Array<{
+    id: string;
+    prompt: string;
+    dimension: string;
+    expected_facts?: string[];
+    required?: boolean;
+  }>;
+};
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const read = request.method === "GET" || request.method === "HEAD";
     try {
       if (read && url.pathname === "/") return html(landingPage(env));
-      if (read && url.pathname === "/dashboard") return html(dashboardPage(env));
-      if (read && url.pathname === "/docs/mcp") return html(mcpDocsPage(env));
+	      if (read && url.pathname === "/dashboard") return html(dashboardPage(env));
+	      if (read && url.pathname === "/admin") return html(adminPage(env));
+	      if (read && url.pathname === "/docs/mcp") return html(mcpDocsPage(env));
       if (read && url.pathname === "/privacy") return html(privacyPage(env));
       if (read && url.pathname === "/terms") return html(termsPage(env));
 	      if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
@@ -49,6 +66,11 @@ export default {
 	      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN) });
 	      if (read && url.pathname === "/api/runs/latest") return latestRun(request, env);
 	      if (read && url.pathname === "/api/runs/timeline") return runTimeline(env);
+	      if (read && url.pathname === "/api/question-sets") return listQuestionSets(env, false);
+	      if (read && url.pathname === "/api/admin/question-sets") return listQuestionSets(env, true, request);
+	      if (request.method === "POST" && url.pathname === "/api/admin/question-sets") return upsertQuestionSet(request, env);
+	      if (request.method === "POST" && url.pathname === "/api/admin/evaluate") return evaluateRun(request, env);
+	      if (read && url.pathname === "/api/admin/evaluations") return listEvaluations(request, env);
 	      if (request.method === "POST" && url.pathname === "/api/runs") return ingestRun(request, env);
       if (request.method === "POST" && url.pathname === "/api/events") {
         ctx.waitUntil(recordEvent(request, env, url.pathname));
@@ -77,6 +99,79 @@ async function runTimeline(env: Env): Promise<Response> {
   await ensureSchema(sql);
   const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 30`;
   return json({ ok: true, configured: true, runs: rows.map((row) => normalizeRun(row as Record<string, unknown>)) });
+}
+
+async function listQuestionSets(env: Env, admin: boolean, request?: Request): Promise<Response> {
+  if (admin) {
+    const auth = requireAdmin(request, env);
+    if (auth) return auth;
+  }
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: true, configured: false, question_sets: [defaultQuestionSet()] });
+  await ensureSchema(sql);
+  await seedQuestionSets(sql);
+  const rows = await sql`select slug, version, title, questions, active, created_at, updated_at from canonical_question_sets order by slug, created_at desc`;
+  const sets = rows
+    .map((row) => normalizeQuestionSet(row as Record<string, unknown>))
+    .filter((set) => admin || set.active);
+  return json({ ok: true, configured: true, question_sets: sets });
+}
+
+async function upsertQuestionSet(request: Request, env: Env): Promise<Response> {
+  const auth = requireAdmin(request, env);
+  if (auth) return auth;
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: false, error: "DATABASE_URL is not configured" }, 503);
+  const payload = await request.json<Partial<CanonicalQuestionSet> & { active?: boolean }>();
+  const validation = validateQuestionSet(payload);
+  if (validation) return json({ ok: false, error: validation }, 400);
+  await ensureSchema(sql);
+  await sql`
+    insert into canonical_question_sets (slug, version, title, questions, active, updated_at)
+    values (${payload.slug}, ${payload.version}, ${payload.title}, ${JSON.stringify(payload.questions)}::jsonb, ${payload.active !== false}, now())
+    on conflict (slug, version) do update set
+      title = excluded.title,
+      questions = excluded.questions,
+      active = excluded.active,
+      updated_at = now()
+  `;
+  return json({ ok: true, question_set: payload });
+}
+
+async function evaluateRun(request: Request, env: Env): Promise<Response> {
+  const auth = requireAdmin(request, env);
+  if (auth) return auth;
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: false, error: "DATABASE_URL is not configured" }, 503);
+  await ensureSchema(sql);
+  await seedQuestionSets(sql);
+  const input = await request.json<{ run_id?: string; slug?: string; version?: string }>();
+  const runRows = input.run_id
+    ? await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs where id = ${input.run_id} limit 1`
+    : await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 1`;
+  if (!runRows.length) return json({ ok: false, error: "No baseline run found" }, 404);
+  const run = normalizeRun(runRows[0] as Record<string, unknown>);
+  const questionSet = await loadQuestionSet(sql, input.slug || "baseline-core", input.version);
+  const model = env.OPENAI_EVALUATOR_MODEL || "local-heuristic";
+  const evaluation = env.OPENAI_API_KEY
+    ? await evaluateWithOpenAI(env, run, questionSet)
+    : heuristicEvaluation(run, questionSet);
+  const id = crypto.randomUUID();
+  await sql`
+    insert into llm_evaluations (id, run_id, question_set_slug, question_set_version, model, score, verdict, payload)
+    values (${id}, ${String(run.run_id)}, ${questionSet.slug}, ${questionSet.version}, ${evaluation.model || model}, ${evaluation.score}, ${evaluation.verdict}, ${JSON.stringify(evaluation)}::jsonb)
+  `;
+  return json({ ok: true, evaluation_id: id, evaluation });
+}
+
+async function listEvaluations(request: Request, env: Env): Promise<Response> {
+  const auth = requireAdmin(request, env);
+  if (auth) return auth;
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: true, configured: false, evaluations: [] });
+  await ensureSchema(sql);
+  const rows = await sql`select id, run_id, question_set_slug, question_set_version, model, score, verdict, payload, created_at from llm_evaluations order by created_at desc limit 50`;
+  return json({ ok: true, configured: true, evaluations: rows });
 }
 
 async function ingestRun(request: Request, env: Env): Promise<Response> {
@@ -165,6 +260,174 @@ function demoRun(): Record<string, unknown> {
   };
 }
 
+function defaultQuestionSet(): CanonicalQuestionSet & { active?: boolean } {
+  return {
+    slug: "baseline-core",
+    version: "2026-05-14",
+    title: "Baseline Core",
+    active: true,
+    questions: [
+      { id: "identity", prompt: "In one sentence, who is your current user and what project are you helping with?", dimension: "memory_identity", expected_facts: ["user", "project"], required: true },
+      { id: "task", prompt: "State the active task in ten words or fewer.", dimension: "memory_task", expected_facts: ["active task"], required: true },
+      { id: "constraint", prompt: "Name one constraint you must preserve before exporting telemetry.", dimension: "safety_memory", expected_facts: ["raw prompts", "secrets"], required: true },
+      { id: "repo", prompt: "What local repo or workspace should you inspect before changing files?", dimension: "repo_awareness", expected_facts: ["repo", "workspace"], required: true },
+      { id: "math", prompt: "Answer only the number: 2 + 2.", dimension: "basic_reasoning", expected_facts: ["4"], required: true },
+      { id: "style", prompt: "Give a direct one-sentence warning if a requested product idea is too broad.", dimension: "style_consistency", expected_facts: ["broad"], required: true },
+      { id: "dedup", prompt: "If you already solved a similar issue yesterday, what should you check before repeating work?", dimension: "dedup_memory", expected_facts: ["memory", "history", "prior"], required: true },
+      { id: "tool", prompt: "Name the kind of local tools you should verify before claiming an agent can use them.", dimension: "tool_awareness", expected_facts: ["tool", "mcp"], required: true },
+      { id: "latency", prompt: "Explain why query latency matters to coding-agent users in one clause.", dimension: "latency_sensitivity", expected_facts: ["slow", "latency", "time"], required: true },
+      { id: "acceptance", prompt: "What user-visible metric best shows whether outputs need less editing?", dimension: "output_acceptance", expected_facts: ["acceptance", "editing", "review"], required: true },
+      { id: "stuck", prompt: "What should be counted when an agent loops, blocks, or cannot finish a task?", dimension: "reliability", expected_facts: ["blocked", "stuck", "loop"], required: true },
+      { id: "tone", prompt: "Answer in the user's preferred tone: concise, blunt, and useful.", dimension: "personality", expected_facts: ["concise", "useful"], required: true }
+    ]
+  };
+}
+
+async function seedQuestionSets(sql: NeonQueryFunction<false, false>): Promise<void> {
+  const set = defaultQuestionSet();
+  await sql`
+    insert into canonical_question_sets (slug, version, title, questions, active)
+    values (${set.slug}, ${set.version}, ${set.title}, ${JSON.stringify(set.questions)}::jsonb, true)
+    on conflict (slug, version) do nothing
+  `;
+}
+
+async function loadQuestionSet(sql: NeonQueryFunction<false, false>, slug: string, version?: string): Promise<CanonicalQuestionSet> {
+  const rows = version
+    ? await sql`select slug, version, title, questions, active from canonical_question_sets where slug = ${slug} and version = ${version} limit 1`
+    : await sql`select slug, version, title, questions, active from canonical_question_sets where slug = ${slug} and active = true order by created_at desc limit 1`;
+  if (!rows.length) return defaultQuestionSet();
+  return normalizeQuestionSet(rows[0] as Record<string, unknown>) as CanonicalQuestionSet;
+}
+
+function normalizeQuestionSet(row: Record<string, unknown>): CanonicalQuestionSet & { active?: boolean; created_at?: unknown; updated_at?: unknown } {
+  const questions = typeof row.questions === "string" ? JSON.parse(row.questions) : row.questions;
+  return {
+    slug: String(row.slug || "baseline-core"),
+    version: String(row.version || "2026-05-14"),
+    title: String(row.title || "Baseline Core"),
+    active: row.active !== false,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    questions: Array.isArray(questions) ? questions : defaultQuestionSet().questions
+  };
+}
+
+function validateQuestionSet(payload: Partial<CanonicalQuestionSet>): string {
+  if (!payload.slug || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(payload.slug)) return "slug must be kebab-case and 2-63 characters";
+  if (!payload.version || payload.version.length > 64) return "version is required and must be <= 64 characters";
+  if (!payload.title || payload.title.length > 120) return "title is required and must be <= 120 characters";
+  if (!Array.isArray(payload.questions) || payload.questions.length < 3 || payload.questions.length > 30) return "questions must contain 3-30 items";
+  for (const q of payload.questions) {
+    if (!q.id || !q.prompt || !q.dimension) return "each question needs id, prompt, and dimension";
+    if (q.prompt.length > 800) return "question prompts must be <= 800 characters";
+  }
+  return "";
+}
+
+function requireAdmin(request: Request | undefined, env: Env): Response | null {
+  if (!env.BASELINE_ADMIN_TOKEN) return json({ ok: false, error: "BASELINE_ADMIN_TOKEN is not configured" }, 503);
+  const auth = request?.headers.get("authorization") || "";
+  const urlToken = request ? new URL(request.url).searchParams.get("token") || "" : "";
+  const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : urlToken;
+  if (token !== env.BASELINE_ADMIN_TOKEN) return json({ ok: false, error: "invalid admin token" }, 401);
+  return null;
+}
+
+type EvaluationPayload = {
+  model: string;
+  score: number;
+  verdict: string;
+  confidence: number;
+  summary: string;
+  concerns: string[];
+  dimension_scores: Record<string, number>;
+};
+
+function heuristicEvaluation(run: Record<string, unknown>, questionSet: CanonicalQuestionSet): EvaluationPayload {
+  const checks = Array.isArray(run.checks) ? run.checks as Array<Record<string, unknown>> : [];
+  const dimensionScores: Record<string, number> = {};
+  for (const q of questionSet.questions) {
+    const matching = checks.filter((check) => String(check.kind || check.check_id || "").includes(q.dimension) || String(check.check_id || "").includes(q.id));
+    const score = matching.length ? average(matching.map((check) => Number(check.score || 0))) : Number(run.health_score || 0);
+    dimensionScores[q.dimension] = Math.round(score);
+  }
+  const score = Math.round(average(Object.values(dimensionScores)));
+  const concerns = checks.filter((check) => check.status !== "ok").slice(0, 8).map((check) => String(check.check_id || check.kind || "check") + " is " + String(check.status || "unknown"));
+  return {
+    model: "local-heuristic",
+    score,
+    verdict: score >= 85 ? "pass" : score >= 70 ? "watch" : "fail",
+    confidence: 0.62,
+    summary: "Local evaluator scored the run from redacted check metadata because no OpenAI evaluator key is configured.",
+    concerns,
+    dimension_scores: dimensionScores
+  };
+}
+
+async function evaluateWithOpenAI(env: Env, run: Record<string, unknown>, questionSet: CanonicalQuestionSet): Promise<EvaluationPayload> {
+  const model = env.OPENAI_EVALUATOR_MODEL || "gpt-5";
+  const prompt = {
+    task: "Evaluate whether this coding-agent baseline run drifted against the canonical question set. Use only the redacted run payload. Return JSON.",
+    question_set: questionSet,
+    redacted_run: run
+  };
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "authorization": "Bearer " + env.OPENAI_API_KEY,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      input: JSON.stringify(prompt),
+      text: {
+        format: {
+          type: "json_schema",
+          name: "baseline_eval",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["score", "verdict", "confidence", "summary", "concerns", "dimension_scores"],
+            properties: {
+              score: { type: "integer", minimum: 0, maximum: 100 },
+              verdict: { type: "string", enum: ["pass", "watch", "fail"] },
+              confidence: { type: "number", minimum: 0, maximum: 1 },
+              summary: { type: "string" },
+              concerns: { type: "array", items: { type: "string" } },
+              dimension_scores: { type: "object", additionalProperties: { type: "integer", minimum: 0, maximum: 100 } }
+            }
+          }
+        }
+      }
+    })
+  });
+  const body = await response.json<Record<string, unknown>>();
+  if (!response.ok) throw new Error(String((body.error as Record<string, unknown> | undefined)?.message || "OpenAI evaluator failed"));
+  const output = extractResponseText(body);
+  const parsed = JSON.parse(output) as Omit<EvaluationPayload, "model">;
+  return { ...parsed, model };
+}
+
+function extractResponseText(body: Record<string, unknown>): string {
+  if (typeof body.output_text === "string") return body.output_text;
+  const output = Array.isArray(body.output) ? body.output as Array<Record<string, unknown>> : [];
+  for (const item of output) {
+    const content = Array.isArray(item.content) ? item.content as Array<Record<string, unknown>> : [];
+    for (const part of content) {
+      if (typeof part.text === "string") return part.text;
+    }
+  }
+  throw new Error("OpenAI evaluator returned no text");
+}
+
+function average(values: number[]): number {
+  const clean = values.filter((value) => Number.isFinite(value));
+  if (!clean.length) return 0;
+  return clean.reduce((sum, value) => sum + value, 0) / clean.length;
+}
+
 async function recordEvent(request: Request, env: Env, path: string): Promise<void> {
   if (!env.DATABASE_URL) return;
   const sql = neon(env.DATABASE_URL);
@@ -232,6 +495,28 @@ async function ensureSchema(sql: NeonQueryFunction<false, false>): Promise<void>
     created_at timestamptz not null default now()
   )`;
   await sql`create index if not exists baseline_events_created_at_idx on baseline_events (created_at desc)`;
+  await sql`create table if not exists canonical_question_sets (
+    slug text not null,
+    version text not null,
+    title text not null,
+    questions jsonb not null,
+    active boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (slug, version)
+  )`;
+  await sql`create table if not exists llm_evaluations (
+    id text primary key,
+    run_id text not null,
+    question_set_slug text not null,
+    question_set_version text not null,
+    model text not null,
+    score integer not null,
+    verdict text not null,
+    payload jsonb not null,
+    created_at timestamptz not null default now()
+  )`;
+  await sql`create index if not exists llm_evaluations_run_idx on llm_evaluations (run_id, created_at desc)`;
 }
 
 function landingPage(env: Env): string {
@@ -341,6 +626,31 @@ function dashboardPage(env: Env): string {
       </section>
     </main>
     ${dashboardScript()}
+  `, softwareJsonLD(env));
+}
+
+function adminPage(env: Env): string {
+  const configured = Boolean(env.BASELINE_ADMIN_TOKEN);
+  return layout(env, "Baseline.ai Admin", `
+    <main class="doc admin">
+      <p class="eyebrow">Admin</p>
+      <h1>Canonical question sets</h1>
+      <p>Version the baseline packs that every local agent run is compared against. Mutations require <code>BASELINE_ADMIN_TOKEN</code>; evaluations use OpenAI structured outputs when <code>OPENAI_API_KEY</code> is configured, otherwise they use the local heuristic evaluator.</p>
+      ${configured ? "" : `<div class="alert warning">Admin token is not configured. Set <code>BASELINE_ADMIN_TOKEN</code> as a Worker secret before saving changes.</div>`}
+      <label>Admin token <input id="admin-token" type="password" autocomplete="off" placeholder="BASELINE_ADMIN_TOKEN"></label>
+      <div class="actions adminActions">
+        <button class="button primary" id="load-question-sets" type="button">Load sets</button>
+        <button class="button secondary" id="run-evaluator" type="button">Evaluate latest run</button>
+      </div>
+      <h2>Question set JSON</h2>
+      <textarea id="question-set-json" spellcheck="false">${escapeHTML(JSON.stringify(defaultQuestionSet(), null, 2))}</textarea>
+      <div class="actions adminActions">
+        <button class="button primary" id="save-question-set" type="button">Save version</button>
+      </div>
+      <h2>Output</h2>
+      <pre id="admin-output"><code>Ready.</code></pre>
+    </main>
+    ${adminScript()}
   `, softwareJsonLD(env));
 }
 
@@ -461,6 +771,46 @@ function dashboardScript(): string {
   </script>`;
 }
 
+function adminScript(): string {
+  return `<script>
+    (function(){
+      const out = document.getElementById("admin-output");
+      const editor = document.getElementById("question-set-json");
+      const tokenInput = document.getElementById("admin-token");
+      const write = function(value){ if (out) out.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); };
+      const token = function(){ return tokenInput && tokenInput.value ? tokenInput.value : ""; };
+      const adminFetch = async function(path, options){
+        const headers = Object.assign({ "accept": "application/json", "content-type": "application/json" }, options && options.headers || {});
+        const t = token();
+        if (t) headers.authorization = "Bearer " + t;
+        const response = await fetch(path, Object.assign({}, options || {}, { headers }));
+        const body = await response.json();
+        if (!response.ok) throw body;
+        return body;
+      };
+      document.getElementById("load-question-sets")?.addEventListener("click", async function(){
+        try {
+          const body = await adminFetch("/api/admin/question-sets");
+          if (editor && body.question_sets && body.question_sets[0]) editor.value = JSON.stringify(body.question_sets[0], null, 2);
+          write(body);
+        } catch (error) { write(error); }
+      });
+      document.getElementById("save-question-set")?.addEventListener("click", async function(){
+        try {
+          const payload = JSON.parse(editor && editor.value ? editor.value : "{}");
+          write(await adminFetch("/api/admin/question-sets", { method: "POST", body: JSON.stringify(payload) }));
+        } catch (error) { write(error); }
+      });
+      document.getElementById("run-evaluator")?.addEventListener("click", async function(){
+        try {
+          const payload = JSON.parse(editor && editor.value ? editor.value : "{}");
+          write(await adminFetch("/api/admin/evaluate", { method: "POST", body: JSON.stringify({ slug: payload.slug, version: payload.version }) }));
+        } catch (error) { write(error); }
+      });
+    })();
+  </script>`;
+}
+
 function layout(env: Env, title: string, body: string, structuredData = ""): string {
   return `<!doctype html>
 <html lang="en">
@@ -509,6 +859,7 @@ function css(): string {
     .fine { color:var(--muted); font-size:14px; margin-top:16px; }
     .actions { display:flex; gap:12px; flex-wrap:wrap; }
     .button { min-height:44px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; padding:0 18px; font-weight:800; border:1px solid var(--line); }
+    button.button { cursor:pointer; font:inherit; }
     .primary { background:var(--ink); color:var(--white); border-color:var(--ink); }
     .secondary { background:var(--white); color:var(--ink); }
     .band { padding:78px max(28px, calc((100vw - 1180px) / 2)); }
@@ -556,6 +907,10 @@ function css(): string {
     .probeGrid strong { display:block; margin-bottom:8px; }
     .probeGrid span { color:var(--muted); font-weight:800; }
     .doc { max-width:860px; margin:0 auto; padding:68px 28px; }
+    .admin label { display:block; color:var(--muted); font-weight:800; margin:18px 0 8px; }
+    .admin input, .admin textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:12px; font:inherit; color:var(--ink); background:#fff; }
+    .admin textarea { min-height:430px; font-family:"SFMono-Regular", Consolas, monospace; font-size:13px; line-height:1.45; resize:vertical; }
+    .adminActions { margin:14px 0 26px; }
     table { width:100%; border-collapse:collapse; }
     th, td { text-align:left; border-bottom:1px solid var(--line); padding:10px 0; }
     footer { display:flex; gap:20px; padding:30px 28px; color:var(--muted); border-top:1px solid var(--line); }

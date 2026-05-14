@@ -6,6 +6,7 @@ Live launch surface:
 
 - Landing page: https://baseline-ai.ryan-borker.workers.dev
 - Dashboard: https://baseline-ai.ryan-borker.workers.dev/dashboard
+- Admin: https://baseline-ai.ryan-borker.workers.dev/admin
 - MCP docs: https://baseline-ai.ryan-borker.workers.dev/docs/mcp
 - Latest run API: https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
 - Timeline API: https://baseline-ai.ryan-borker.workers.dev/api/runs/timeline
@@ -72,7 +73,11 @@ The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe
 - Cloudflare Worker: `baseline-ai`
 - Worker URL: https://baseline-ai.ryan-borker.workers.dev
 - Neon project: `baseline-v0` (`summer-cake-63602849`)
-- Neon tables: `baseline_runs`, `baseline_events`
+- Neon tables: `baseline_runs`, `baseline_events`, `canonical_question_sets`, `llm_evaluations`
+
+## Admin and Evaluator
+
+The admin page versions canonical question sets in Neon and can evaluate the latest run. Set `BASELINE_ADMIN_TOKEN` as a Worker secret to enable mutations. Set `OPENAI_API_KEY` and optionally `OPENAI_EVALUATOR_MODEL` to use the OpenAI Responses API with structured JSON output; without those secrets the evaluator uses a local heuristic over redacted check metadata.
 
 ## Current Blocker
 
