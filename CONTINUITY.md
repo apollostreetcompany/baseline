@@ -8,6 +8,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Fast mode must never execute the agent. Full mode requires explicit opt-in for agent execution.
 - Cloud sync must fail closed and export only redacted/hash summaries.
 - Payment checkout is implemented but cannot go live without Stripe secrets, price IDs, or payment links.
+- OpenProse Codex skill was repaired to upstream 0.13.1 on 2026-05-14; stale local copy backed up at `/Users/future/.codex/skills/open-prose.backup-20260513172352`.
 
 ## Key Decisions
 - Broad "LLM observability" positioning is not viable as a solo wedge because incumbent trace/eval platforms already own it.
@@ -21,6 +22,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Go was selected for the CLI/MCP binary and Cloudflare Workers + Neon for the launch surface.
 - MCP is intentionally limited to seven legible tools.
 - The first dogfood path is: `baseline check`, `baseline known-good mark`, `baseline compare`, `baseline install openclaw`, redacted cloud sync.
+- Attached recipe-style `.prose.md` files are legacy frontmatter workflows without `kind:`; they now have compatibility run receipts under `.prose/runs/`.
 
 ## State
 ### Done
@@ -30,9 +32,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 4: Proconsult-attempted product shaping into smallest defensible v0
 - [x] Bead 5: Fixed Proconsult browser login path and incorporated successful consult
 - [x] Bead 6: Implemented and deployed Baseline v0 CLI/MCP, landing page, dashboard, Neon sync, and launch docs
+- [x] Bead 7: Repaired OpenProse VM surface and ran attached `.prose.md` recipes with filesystem receipts
 
 ### Now
-- Bead 6 complete locally and deployed. Latest clean known-good is `post-mcp-clean`.
+- Bead 7 complete. OpenProse runtime is updated, and recipe outputs are recorded in `docs/OPENPROSE_RUN_RESULTS.md` plus `.prose/runs/`.
 
 ### Next
 - Add Stripe secrets or payment links and verify checkout end-to-end.
@@ -40,12 +43,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Add scheduled local run instructions or daemon/cron helper.
 - Add alert delivery after the local report earns trust.
 - Refactor Go packages toward the Proconsult-recommended hard boundaries if v0 expands.
+- Convert legacy skills-library recipes to current `kind: service` / `kind: system` Contract Markdown if they should strict-run without compatibility mode.
 
 ## Open Questions
 - Which Stripe plan IDs or payment links should be used for Pro and Team?
 - Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
 - Should `baseline check --full --run-agent` be dogfooded now, or kept manual until prompt cost/runtime behavior is reviewed?
 - Should token issuance be self-serve in the dashboard or manual for the first ten users?
+- Should the recipe library be migrated in place to OpenProse 0.13.1 contract frontmatter, or should compatibility mode remain supported for older `.prose.md` recipes?
 
 ## Working Set
 - `/Users/future/.openclaw/workspace/repos/skills-library/recipes/00-kill-gate.prose.md`
@@ -61,6 +66,8 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/README.md`
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
 - `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
+- `/Users/future/dev/baseline/docs/OPENPROSE_RUN_RESULTS.md`
+- `/Users/future/dev/baseline/.prose/runs/20260514-002532-*`
 
 
 <!-- BEGIN COMPOUND CODEX TOOL MAP -->

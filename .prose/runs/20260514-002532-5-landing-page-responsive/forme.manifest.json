@@ -1,0 +1,19 @@
+{
+  "openprose_runtime_contract": 1,
+  "compatibility_mode": "legacy-recipe-frontmatter",
+  "invoked_source": "/Users/future/.openclaw/workspace/repos/skills-library/recipes/web-landing-page-responsive.prose.md",
+  "name": "landing-page-responsive",
+  "kind": "legacy_recipe_activation",
+  "backend": "filesystem",
+  "service": {
+    "id": "landing-page-responsive",
+    "title": "Web Landing Page Responsive",
+    "outputs": [
+      "result.md"
+    ]
+  },
+  "warnings": [
+    "Source has recipe metadata but no kind: service/system frontmatter; executed through compatibility activation.",
+    "Host subagent spawning was not used; auditor roles were executed inline because the current Codex tool contract does not allow implicit subagent spawning."
+  ]
+}
