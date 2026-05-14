@@ -7,6 +7,8 @@ Live launch surface:
 - Landing page: https://baseline-ai.ryan-borker.workers.dev
 - Dashboard: https://baseline-ai.ryan-borker.workers.dev/dashboard
 - MCP docs: https://baseline-ai.ryan-borker.workers.dev/docs/mcp
+- Latest run API: https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
+- Timeline API: https://baseline-ai.ryan-borker.workers.dev/api/runs/timeline
 
 ## Install
 
@@ -33,6 +35,8 @@ This machine is already configured with:
 ./bin/baseline latest --json
 ./bin/baseline report
 ./bin/baseline compare
+./bin/baseline sync status
+./bin/baseline sync push
 ```
 
 Fast mode never runs the agent. Full mode includes the 12-question baseline pack but skips execution until `--run-agent` or `BASELINE_RUN_AGENT=1` is set.
@@ -58,6 +62,8 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./b
 ## Safety
 
 Baseline defaults to local SQLite. Cloud sync sends a small redacted payload: run ID, timing, score, mode, agent kind, check metadata, metric numbers, and workspace hash. Raw prompts, raw responses, local paths, and API keys are not exported by the v0 sync path.
+
+Cloud sync is staged through a local SQLite outbox. Failed uploads remain retryable and visible through `baseline sync status`; `baseline sync push` stages unsynced local runs and retries queued uploads.
 
 The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe checkout is implemented but not live until Stripe credentials or payment links are set as Worker secrets.
 

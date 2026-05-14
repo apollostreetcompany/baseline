@@ -13,11 +13,25 @@ interface Env {
 
 type RunPayload = {
   run_id?: string;
+  started_at?: string;
+  duration_ms?: number;
   workspace?: string;
+  workspace_hash?: string;
   agent_kind?: string;
+  redaction_status?: string;
   status?: string;
   health_score?: number;
   mode?: string;
+  checks?: Array<{
+    check_id?: string;
+    lane?: string;
+    kind?: string;
+    status?: string;
+    severity?: number;
+    score?: number;
+    duration_ms?: number;
+    metrics?: Record<string, number>;
+  }>;
 };
 
 export default {
@@ -30,10 +44,12 @@ export default {
       if (read && url.pathname === "/docs/mcp") return html(mcpDocsPage(env));
       if (read && url.pathname === "/privacy") return html(privacyPage(env));
       if (read && url.pathname === "/terms") return html(termsPage(env));
-      if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
-      if (read && url.pathname === "/sitemap.xml") return text(sitemap(baseURL(env, request)), "application/xml");
-      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN) });
-      if (request.method === "POST" && url.pathname === "/api/runs") return ingestRun(request, env);
+	      if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
+	      if (read && url.pathname === "/sitemap.xml") return text(sitemap(baseURL(env, request)), "application/xml");
+	      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN) });
+	      if (read && url.pathname === "/api/runs/latest") return latestRun(request, env);
+	      if (read && url.pathname === "/api/runs/timeline") return runTimeline(env);
+	      if (request.method === "POST" && url.pathname === "/api/runs") return ingestRun(request, env);
       if (request.method === "POST" && url.pathname === "/api/events") {
         ctx.waitUntil(recordEvent(request, env, url.pathname));
         return json({ ok: true });
@@ -45,6 +61,23 @@ export default {
     }
   }
 };
+
+async function latestRun(request: Request, env: Env): Promise<Response> {
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: true, configured: false, run: demoRun(), origin: baseURL(env, request) });
+  await ensureSchema(sql);
+  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 1`;
+  const run = rows.length ? normalizeRun(rows[0] as Record<string, unknown>) : demoRun();
+  return json({ ok: true, configured: true, run, origin: baseURL(env, request) });
+}
+
+async function runTimeline(env: Env): Promise<Response> {
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: true, configured: false, runs: [demoRun()] });
+  await ensureSchema(sql);
+  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 30`;
+  return json({ ok: true, configured: true, runs: rows.map((row) => normalizeRun(row as Record<string, unknown>)) });
+}
 
 async function ingestRun(request: Request, env: Env): Promise<Response> {
   const auth = request.headers.get("authorization") || "";
@@ -68,6 +101,68 @@ async function ingestRun(request: Request, env: Env): Promise<Response> {
       payload = excluded.payload
   `;
   return json({ ok: true });
+}
+
+function configuredSQL(env: Env): NeonQueryFunction<false, false> | null {
+  if (!env.DATABASE_URL) return null;
+  return neon(env.DATABASE_URL);
+}
+
+function normalizeRun(row: Record<string, unknown>): Record<string, unknown> {
+  const payload = normalizePayload(row.payload);
+  const checks = Array.isArray(payload.checks) ? payload.checks : [];
+  const warningCount = checks.filter((check) => check && typeof check === "object" && (check as Record<string, unknown>).status !== "ok").length;
+  return {
+    run_id: String(row.id || payload.run_id || ""),
+    created_at: row.created_at || payload.started_at || "",
+    started_at: payload.started_at || row.created_at || "",
+    workspace: String(row.workspace || payload.workspace || "unknown"),
+    workspace_hash: String(payload.workspace_hash || ""),
+    agent_kind: String(row.agent_kind || payload.agent_kind || "unknown"),
+    status: String(row.status || payload.status || "unknown"),
+    health_score: Number(row.health_score || payload.health_score || 0),
+    duration_ms: Number(payload.duration_ms || 0),
+    mode: String(row.mode || payload.mode || "unknown"),
+    redaction_status: String(payload.redaction_status || "unknown"),
+    warning_count: warningCount,
+    checks
+  };
+}
+
+function normalizePayload(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value === "object") return value as Record<string, unknown>;
+  return {};
+}
+
+function demoRun(): Record<string, unknown> {
+  return {
+    run_id: "demo_run",
+    created_at: new Date().toISOString(),
+    started_at: new Date().toISOString(),
+    workspace: "sha256:demo",
+    workspace_hash: "demo",
+    agent_kind: "openclaw",
+    status: "warning",
+    health_score: 82,
+    duration_ms: 13400,
+    mode: "fast",
+    redaction_status: "clean",
+    warning_count: 2,
+    checks: [
+      { check_id: "mcp.openclaw.config", kind: "tooling", status: "warning", score: 82, duration_ms: 12 },
+      { check_id: "safety.scrubber", kind: "safety", status: "ok", score: 100, duration_ms: 1 },
+      { check_id: "latency.baseline_probe", kind: "latency", status: "ok", score: 100, duration_ms: 2 }
+    ]
+  };
 }
 
 async function recordEvent(request: Request, env: Env, path: string): Promise<void> {
@@ -227,29 +322,25 @@ function dashboardPage(env: Env): string {
       <section class="dashHead">
         <div>
           <p class="eyebrow">Visual dashboard</p>
-          <h1>Agent health is trending down on latency, flat on memory.</h1>
+          <h1 id="dashboard-summary">Loading latest baseline run.</h1>
         </div>
         <a class="button secondary" href="/docs/mcp">Connect MCP</a>
       </section>
-      ${dashboardVisual()}
+      ${dashboardVisual(true)}
       <section class="band two">
         <div class="panel">
           <h2>Latest findings</h2>
-          <div class="alert warning">OpenClaw config readable, but Baseline MCP not registered.</div>
-          <div class="alert warning">Question pack skipped until run-agent is enabled.</div>
-          <div class="alert ok">Safety scrubber redacted synthetic key, email, and path.</div>
+          <div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div>
         </div>
         <div class="panel">
-          <h2>What changed</h2>
-          <table>
-            <tr><th>Signal</th><th>Known-good</th><th>Today</th></tr>
-            <tr><td>p95 response</td><td>8.2s</td><td>13.4s</td></tr>
-            <tr><td>Memory identity</td><td>match</td><td>partial</td></tr>
-            <tr><td>Tool calls</td><td>99%</td><td>94%</td></tr>
+          <h2>Recent runs</h2>
+          <table id="run-timeline">
+            <tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>
           </table>
         </div>
       </section>
     </main>
+    ${dashboardScript()}
   `, softwareJsonLD(env));
 }
 
@@ -268,7 +359,8 @@ openclaw mcp list
       <pre><code>${escapeHTML(install)}</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
-baseline check --fast</code></pre>
+baseline check --fast
+baseline sync push</code></pre>
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
       <h2>Recommended first known-good</h2>
@@ -295,16 +387,17 @@ function notFoundPage(env: Env): string {
   return layout(env, "Not found", `<main class="doc"><h1>Not found</h1><p>The page does not exist.</p></main>`);
 }
 
-function dashboardVisual(): string {
+function dashboardVisual(live = false): string {
+  const id = (name: string) => live ? ` id="${name}"` : "";
   return `
     <div class="productFrame">
-      <div class="frameTop"><span></span><strong>baseline run_dihj6f94</strong><em>score 92</em></div>
+      <div class="frameTop"><span></span><strong${id("frame-run")}>baseline run_dihj6f94</strong><em${id("frame-score")}>score 92</em></div>
       <div class="scoreRow">
-        <div class="scoreBlock"><b>92</b><span>Health</span></div>
-        <div class="miniBars"><i style="height:42%"></i><i style="height:78%"></i><i style="height:60%"></i><i style="height:88%"></i><i style="height:51%"></i><i style="height:70%"></i></div>
-        <div class="signalList"><p><span class="dot okDot"></span>Scrubber clean</p><p><span class="dot warnDot"></span>MCP missing</p><p><span class="dot badDot"></span>Latency up</p></div>
+        <div class="scoreBlock"><b${id("health-score")}>92</b><span>Health</span></div>
+        <div class="miniBars"${id("health-bars")}><i style="height:42%"></i><i style="height:78%"></i><i style="height:60%"></i><i style="height:88%"></i><i style="height:51%"></i><i style="height:70%"></i></div>
+        <div class="signalList"${id("signal-list")}><p><span class="dot okDot"></span>Scrubber clean</p><p><span class="dot warnDot"></span>MCP missing</p><p><span class="dot badDot"></span>Latency up</p></div>
       </div>
-      <div class="probeGrid">
+      <div class="probeGrid"${id("probe-grid")}>
         <div><strong>identity</strong><span>pass</span></div>
         <div><strong>repo</strong><span>pass</span></div>
         <div><strong>tooling</strong><span>warn</span></div>
@@ -312,6 +405,60 @@ function dashboardVisual(): string {
       </div>
     </div>
   `;
+}
+
+function dashboardScript(): string {
+  return `<script>
+    (async function(){
+      const text = function(value){ return String(value == null ? "" : value); };
+      const shortRun = function(id){ return text(id).replace(/^run_/, "").slice(0, 12) || "no-run"; };
+      const setText = function(id, value){ const el = document.getElementById(id); if (el) el.textContent = value; };
+      const statusClass = function(status){ return status === "ok" ? "ok" : (status === "critical" ? "bad" : "warning"); };
+      try {
+        const latestResp = await fetch("/api/runs/latest", { headers: { "accept": "application/json" } });
+        const latest = await latestResp.json();
+        const run = latest.run || {};
+        const score = Number(run.health_score || 0);
+        setText("dashboard-summary", "Latest " + text(run.agent_kind || "agent") + " run is " + text(run.status || "unknown") + " with score " + score + ".");
+        setText("frame-run", "baseline " + shortRun(run.run_id));
+        setText("frame-score", "score " + score);
+        setText("health-score", String(score));
+        const checks = Array.isArray(run.checks) ? run.checks : [];
+        const signals = document.getElementById("signal-list");
+        if (signals) {
+          const rows = checks.slice(0, 5).map(function(check){
+            const klass = check.status === "ok" ? "okDot" : (check.status === "critical" ? "badDot" : "warnDot");
+            return "<p><span class=\\"dot " + klass + "\\"></span>" + text(check.check_id || check.kind || "check") + " " + text(check.status || "unknown") + "</p>";
+          });
+          signals.innerHTML = rows.length ? rows.join("") : "<p><span class=\\"dot warnDot\\"></span>No checks received</p>";
+        }
+        const findings = document.getElementById("latest-findings");
+        if (findings) {
+          const bad = checks.filter(function(check){ return check.status !== "ok"; }).slice(0, 6);
+          findings.innerHTML = (bad.length ? bad : checks.slice(0, 3)).map(function(check){
+            return "<div class=\\"alert " + statusClass(check.status) + "\\">" + text(check.check_id || "check") + ": " + text(check.status || "unknown") + " · " + Math.round(Number(check.score || 0)) + "</div>";
+          }).join("") || "<div class=\\"alert warning\\">No synced checks yet.</div>";
+        }
+        const grid = document.getElementById("probe-grid");
+        if (grid) {
+          grid.innerHTML = checks.slice(0, 8).map(function(check){
+            return "<div><strong>" + text(check.kind || check.check_id || "probe") + "</strong><span>" + text(check.status || "unknown") + "</span></div>";
+          }).join("");
+        }
+        const timelineResp = await fetch("/api/runs/timeline", { headers: { "accept": "application/json" } });
+        const timeline = await timelineResp.json();
+        const table = document.getElementById("run-timeline");
+        if (table) {
+          const runs = Array.isArray(timeline.runs) ? timeline.runs : [];
+          table.innerHTML = "<tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>" + runs.slice(0, 12).map(function(row){
+            return "<tr><td>" + shortRun(row.run_id) + "</td><td>" + Number(row.health_score || 0) + "</td><td>" + text(row.status || "unknown") + "</td><td>" + text(row.mode || "unknown") + "</td></tr>";
+          }).join("");
+        }
+      } catch (error) {
+        setText("dashboard-summary", "Dashboard could not load run data.");
+      }
+    })();
+  </script>`;
 }
 
 function layout(env: Env, title: string, body: string, structuredData = ""): string {

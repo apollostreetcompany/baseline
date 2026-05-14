@@ -71,7 +71,7 @@ Usage:
   baseline known-good list
   baseline install openclaw
   baseline serve mcp
-  baseline sync status|on|off [--token TOKEN] [--url URL]
+  baseline sync status|on|off|push [--token TOKEN] [--url URL]
   baseline scrub preview <text>
 
 Safety defaults:
@@ -302,7 +302,7 @@ func cmdInstall(args []string, stdout, stderr io.Writer) int {
 
 func cmdSync(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: baseline sync status|on|off")
+		fmt.Fprintln(stderr, "usage: baseline sync status|on|off|push")
 		return 2
 	}
 	cfg, err := loadConfig()
@@ -316,7 +316,18 @@ func cmdSync(args []string, stdout, stderr io.Writer) int {
 		if cfg.CloudSync {
 			state = "on"
 		}
-		fmt.Fprintf(stdout, "sync=%s url=%s token_set=%t allow_raw_output=%t\n", state, cfg.APIBaseURL, cfg.APIToken != "", cfg.AllowRawOutput)
+		db, err := openDB()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		defer db.Close()
+		counts, err := syncOutboxCounts(db)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "sync=%s url=%s token_set=%t allow_raw_output=%t outbox_pending=%d outbox_failed=%d outbox_synced=%d\n", state, cfg.APIBaseURL, cfg.APIToken != "", cfg.AllowRawOutput, counts.Pending, counts.Failed, counts.Synced)
 		return 0
 	case "on":
 		fs := flag.NewFlagSet("sync on", flag.ContinueOnError)
@@ -347,8 +358,27 @@ func cmdSync(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "Cloud sync disabled.")
 		return 0
+	case "push":
+		db, err := openDB()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		defer db.Close()
+		staged, err := stageUnsyncedRuns(db, 50)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		result, err := flushSyncOutbox(context.Background(), db, cfg)
+		if err != nil {
+			fmt.Fprintf(stderr, "sync push failed after staging %d runs: %v\n", staged, err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "Sync push staged=%d synced=%d failed=%d\n", staged, result.Synced, result.Failed)
+		return 0
 	default:
-		fmt.Fprintln(stderr, "usage: baseline sync status|on|off")
+		fmt.Fprintln(stderr, "usage: baseline sync status|on|off|push")
 		return 2
 	}
 }

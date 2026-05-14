@@ -97,13 +97,24 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		return Run{}, err
 	}
 	if cfg.CloudSync && cfg.APIToken != "" {
-		if err := syncRun(ctx, cfg, run); err == nil {
+		if err := stageSyncPayload(db, run); err != nil {
+			return Run{}, err
+		}
+		result, err := flushSyncOutbox(ctx, db, cfg)
+		if err == nil && result.Synced > 0 {
 			run.CloudSynced = true
-		} else {
+		} else if err != nil {
 			run.Findings = append(run.Findings, Finding{
 				Severity: "warning",
 				CheckID:  "cloud.sync",
 				Message:  "Cloud sync failed: " + err.Error(),
+				Fix:      "Run baseline sync status and verify the API token.",
+			})
+		} else {
+			run.Findings = append(run.Findings, Finding{
+				Severity: "warning",
+				CheckID:  "cloud.sync",
+				Message:  "Cloud sync did not upload any queued runs.",
 				Fix:      "Run baseline sync status and verify the API token.",
 			})
 		}
@@ -491,14 +502,69 @@ func newRunID() string {
 	return "run_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
-func syncRun(ctx context.Context, cfg Config, run Run) error {
+type SyncFlushResult struct {
+	Synced int `json:"synced"`
+	Failed int `json:"failed"`
+}
+
+func flushSyncOutbox(ctx context.Context, db *sql.DB, cfg Config) (SyncFlushResult, error) {
 	if cfg.APIBaseURL == "" || cfg.APIToken == "" {
-		return nil
+		return SyncFlushResult{}, nil
 	}
-	body, err := json.Marshal(cloudPayload(run))
+	now := time.Now().Format(time.RFC3339)
+	rows, err := db.Query(`SELECT id, run_id, payload_json FROM sync_outbox
+		WHERE status IN ('pending', 'failed') AND next_attempt_at <= ?
+		ORDER BY created_at LIMIT 25`, now)
 	if err != nil {
-		return err
+		return SyncFlushResult{}, err
 	}
+	defer rows.Close()
+	type item struct {
+		id      int64
+		runID   string
+		payload string
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.id, &it.runID, &it.payload); err != nil {
+			return SyncFlushResult{}, err
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return SyncFlushResult{}, err
+	}
+	var result SyncFlushResult
+	var firstErr error
+	for _, it := range items {
+		err := syncCloudPayload(ctx, cfg, []byte(it.payload))
+		if err != nil {
+			result.Failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+			backoff := time.Now().Add(syncBackoff(it.id)).Format(time.RFC3339)
+			_, _ = db.Exec(`UPDATE sync_outbox SET status = 'failed', attempts = attempts + 1, next_attempt_at = ?, last_error = ? WHERE id = ?`, backoff, err.Error(), it.id)
+			continue
+		}
+		result.Synced++
+		syncedAt := time.Now().Format(time.RFC3339)
+		_, _ = db.Exec(`UPDATE sync_outbox SET status = 'synced', attempts = attempts + 1, next_attempt_at = ?, last_error = '', synced_at = ? WHERE id = ?`, syncedAt, syncedAt, it.id)
+		_ = updateRunCloudSynced(db, it.runID, true)
+	}
+	return result, firstErr
+}
+
+func syncBackoff(rowID int64) time.Duration {
+	seconds := rowID % 30
+	if seconds < 2 {
+		seconds = 2
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func syncCloudPayload(ctx context.Context, cfg Config, body []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(cfg.APIBaseURL, "/")+"/api/runs", bytes.NewReader(body))
 	if err != nil {
 		return err

@@ -2,7 +2,7 @@
 Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Success is a working local check/known-good/compare loop, OpenClaw MCP install, redacted cloud sync, landing page, dashboard, payment hook, validation notes, and clear launch blockers.
 
 ## Constraints/Assumptions
-- Repo is now a git repository, but no remote is configured; commit is possible, push is blocked until a remote is added.
+- Git remote `origin` is configured as `https://github.com/apollostreetcompany/baseline.git`.
 - Bead 6 committed locally as `b00a1a7` before amend; final commit is the current `HEAD`.
 - v0 is a local known-good drift checker, not a broad eval platform.
 - Fast mode must never execute the agent. Full mode requires explicit opt-in for agent execution.
@@ -34,14 +34,15 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 6: Implemented and deployed Baseline v0 CLI/MCP, landing page, dashboard, Neon sync, and launch docs
 - [x] Bead 7: Repaired OpenProse VM surface and ran attached `.prose.md` recipes with filesystem receipts
 - [x] Bead 8: Consolidated recommendations into sequenced implementation beads
+- [x] Bead 9: Added retryable local sync outbox and real Worker dashboard run APIs
 
 ### Now
-- Bead 8 complete. Recommended changes are consolidated in `docs/plans/2026-05-14-001-feat-baseline-next-beads-plan.md`.
+- Bead 9 complete. Local runs sync through a SQLite outbox, failed uploads are retryable, and the dashboard reads `/api/runs/latest` plus `/api/runs/timeline`.
 
 ### Next
-- Bead 9: Activate Stripe Pro checkout with webhook-based entitlement.
-- If Stripe is still blocked, run Bead 12 (local sync outbox) or Bead 13 (MCP safety hardening) first.
-- Later sequence: token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, real dashboard data, release packaging, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
+- Bead 10: Admin/versioned canonical question sets and LLM evaluator.
+- Bead 11: Distribution packages for pnpm/npm, OpenClaw plugin bundle, and Go module release path.
+- Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
 - Which Stripe plan IDs or payment links should be used for Pro and Team?
@@ -62,6 +63,9 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/internal/baseline`
 - `/Users/future/dev/baseline/web/src/index.ts`
 - `/Users/future/dev/baseline/README.md`
+- `/Users/future/dev/baseline/docs/PUBLISHING.md`
+- `/Users/future/dev/baseline/package`
+- `/Users/future/dev/baseline/openclaw-plugin`
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
 - `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
 - `/Users/future/dev/baseline/docs/OPENPROSE_RUN_RESULTS.md`

@@ -71,9 +71,21 @@ func migrate(db *sql.DB) error {
 			label TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS sync_outbox (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id TEXT NOT NULL UNIQUE REFERENCES runs(id) ON DELETE CASCADE,
+			payload_json TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			attempts INTEGER NOT NULL DEFAULT 0,
+			next_attempt_at TEXT NOT NULL,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			synced_at TEXT
+		);`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_checks_run ON check_results(run_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_observations_key ON observations(key, run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox(status, next_attempt_at);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -81,6 +93,11 @@ func migrate(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func updateRunCloudSynced(db *sql.DB, runID string, synced bool) error {
+	_, err := db.Exec(`UPDATE runs SET cloud_synced = ? WHERE id = ?`, boolInt(synced), runID)
+	return err
 }
 
 func saveRun(db *sql.DB, run Run, observations []Observation) error {
@@ -298,6 +315,88 @@ func observationsForRun(db *sql.DB, runID string) ([]Observation, error) {
 		observations = append(observations, o)
 	}
 	return observations, rows.Err()
+}
+
+type SyncOutboxCounts struct {
+	Pending int `json:"pending"`
+	Synced  int `json:"synced"`
+	Failed  int `json:"failed"`
+}
+
+func syncOutboxCounts(db *sql.DB) (SyncOutboxCounts, error) {
+	rows, err := db.Query(`SELECT status, count(*) FROM sync_outbox GROUP BY status`)
+	if err != nil {
+		return SyncOutboxCounts{}, err
+	}
+	defer rows.Close()
+	var counts SyncOutboxCounts
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return counts, err
+		}
+		switch status {
+		case "pending":
+			counts.Pending = count
+		case "synced":
+			counts.Synced = count
+		case "failed":
+			counts.Failed = count
+		}
+	}
+	return counts, rows.Err()
+}
+
+func stageSyncPayload(db *sql.DB, run Run) error {
+	payload, err := json.Marshal(cloudPayload(run))
+	if err != nil {
+		return err
+	}
+	now := time.Now().Format(time.RFC3339)
+	_, err = db.Exec(`INSERT INTO sync_outbox (run_id, payload_json, status, attempts, next_attempt_at, last_error, created_at)
+		VALUES (?, ?, 'pending', 0, ?, '', ?)
+		ON CONFLICT(run_id) DO UPDATE SET
+			payload_json = excluded.payload_json,
+			status = CASE WHEN sync_outbox.status = 'synced' THEN sync_outbox.status ELSE 'pending' END,
+			next_attempt_at = excluded.next_attempt_at,
+			last_error = CASE WHEN sync_outbox.status = 'synced' THEN sync_outbox.last_error ELSE '' END`,
+		run.ID, string(payload), now, now)
+	return err
+}
+
+func stageUnsyncedRuns(db *sql.DB, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := db.Query(`SELECT id FROM runs WHERE cloud_synced = 0 ORDER BY started_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	staged := 0
+	for _, id := range ids {
+		run, err := runByID(db, id)
+		if err != nil {
+			return staged, err
+		}
+		if err := stageSyncPayload(db, run); err != nil {
+			return staged, err
+		}
+		staged++
+	}
+	return staged, nil
 }
 
 func boolInt(v bool) int {
