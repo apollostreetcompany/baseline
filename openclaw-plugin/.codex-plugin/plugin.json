@@ -1,0 +1,9 @@
+{
+  "id": "baseline-ai",
+  "name": "Baseline.ai",
+  "version": "0.1.0",
+  "description": "Local-first coding-agent health checks and drift monitoring for OpenClaw.",
+  "publisher": "Baseline.ai",
+  "mcp": ".mcp.json",
+  "skills": "skills"
+}

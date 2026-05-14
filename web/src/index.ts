@@ -565,7 +565,7 @@ function landingPage(env: Env): string {
       <section class="band">
         <h2>Three minute setup</h2>
         <div class="steps">
-          <div><span>1</span><strong>Install</strong><code>go install github.com/future/baseline/cmd/baseline@latest</code></div>
+          <div><span>1</span><strong>Install</strong><code>go install github.com/apollostreetcompany/baseline/cmd/baseline@latest</code></div>
           <div><span>2</span><strong>Register</strong><code>baseline init --register-openclaw</code></div>
           <div><span>3</span><strong>Check</strong><code>baseline check --full --run-agent</code></div>
         </div>

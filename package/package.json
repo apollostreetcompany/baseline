@@ -1,0 +1,24 @@
+{
+  "name": "@baseline-ai/cli",
+  "version": "0.1.0",
+  "description": "npm wrapper for the Baseline local-first Go CLI and MCP server.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "baseline": "./bin/baseline.js"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --check bin/baseline.js",
+    "pack:dry-run": "pnpm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

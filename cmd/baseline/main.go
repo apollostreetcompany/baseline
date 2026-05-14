@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/future/baseline/internal/baseline"
+	"github.com/apollostreetcompany/baseline/internal/baseline"
 )
 
 func main() {

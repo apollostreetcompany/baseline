@@ -36,13 +36,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 8: Consolidated recommendations into sequenced implementation beads
 - [x] Bead 9: Added retryable local sync outbox and real Worker dashboard run APIs
 - [x] Bead 10: Added admin/versioned canonical question sets and LLM evaluator endpoint
+- [x] Bead 11: Added pnpm/npm wrapper package, OpenClaw plugin bundle, and Go release path
 
 ### Now
-- Bead 10 complete. `/admin` manages canonical question set JSON, and `/api/admin/evaluate` stores evaluator results using OpenAI structured outputs when configured or a local heuristic fallback.
+- Bead 11 complete. The Go module path now matches `github.com/apollostreetcompany/baseline`, `package/` contains the npm/pnpm wrapper, and `openclaw-plugin/` is installed locally as a linked OpenClaw bundle for smoke testing.
 
 ### Next
-- Bead 11: Distribution packages for pnpm/npm, OpenClaw plugin bundle, and Go module release path.
 - Bead 12: Deploy current Worker, configure required secrets, and smoke-test pushed local runs rendering on the dashboard.
+- Bead 13: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions

@@ -14,10 +14,16 @@ Live launch surface:
 ## Install
 
 ```sh
-go build -o bin/baseline ./cmd/baseline
-./bin/baseline init
-./bin/baseline install openclaw
+go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
+baseline init
+baseline install openclaw
 openclaw mcp list
+```
+
+Local source build:
+
+```sh
+go build -o bin/baseline ./cmd/baseline
 ```
 
 This machine is already configured with:
@@ -78,6 +84,14 @@ The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe
 ## Admin and Evaluator
 
 The admin page versions canonical question sets in Neon and can evaluate the latest run. Set `BASELINE_ADMIN_TOKEN` as a Worker secret to enable mutations. Set `OPENAI_API_KEY` and optionally `OPENAI_EVALUATOR_MODEL` to use the OpenAI Responses API with structured JSON output; without those secrets the evaluator uses a local heuristic over redacted check metadata.
+
+## Distribution
+
+- Go: `go install github.com/apollostreetcompany/baseline/cmd/baseline@latest`
+- npm/pnpm wrapper: `package/` publishes `@baseline-ai/cli`
+- OpenClaw bundle: `openclaw-plugin/` installs with `openclaw plugins install ./openclaw-plugin`
+
+See `docs/PUBLISHING.md` for release and verification steps.
 
 ## Current Blocker
 
