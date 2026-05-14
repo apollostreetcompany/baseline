@@ -24,6 +24,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "init":
 		return cmdInit(args[1:], stdout, stderr)
+	case "bootstrap":
+		return cmdBootstrap(ctx, args[1:], stdout, stderr)
 	case "check":
 		return cmdCheck(ctx, args[1:], stdout, stderr)
 	case "latest":
@@ -32,8 +34,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return cmdReport(args[1:], stdout, stderr)
 	case "compare":
 		return cmdCompare(stdout, stderr)
+	case "good":
+		return cmdGood(args[1:], stdout, stderr)
 	case "known-good":
 		return cmdKnownGood(args[1:], stdout, stderr)
+	case "config":
+		return cmdConfig(args[1:], stdout, stderr)
 	case "install":
 		return cmdInstall(args[1:], stdout, stderr)
 	case "serve":
@@ -65,12 +71,14 @@ func printHelp(w io.Writer) {
 
 Usage:
   baseline init [--register-openclaw]
-  baseline check [--fast|--full] [--run-agent] [--json] [--agent-command CMD]
+  baseline bootstrap [--openclaw] | status|defaults|preview|run|accept|reject
+  baseline check [--fast|--full] [--run-agent] [--packs enabled|all|baseline] [--json] [--agent-command CMD]
   baseline latest [--json]
   baseline report [RUN_ID]
   baseline compare
-  baseline known-good mark [RUN_ID] [--label LABEL]
-  baseline known-good list
+  baseline good accept [RUN_ID] [--slot auto|1|2|3] [--label LABEL]
+  baseline good list
+  baseline config file|show|get|set|patch|unset|validate
   baseline install openclaw
   baseline serve mcp
   baseline sync status|on|off|push [--token TOKEN] [--url URL]
@@ -79,7 +87,7 @@ Usage:
 
 Safety defaults:
   - Local SQLite only until sync is enabled.
-  - Full question probes do not execute an agent unless --run-agent or BASELINE_RUN_AGENT=1 is set.
+  - Full question probes do not execute an agent unless --run-agent, bootstrap run, or BASELINE_RUN_AGENT=1 is set.
   - Cloud export stores redacted summaries by default.
 `)
 }
@@ -176,6 +184,7 @@ func cmdCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	runAgent := fs.Bool("run-agent", false, "allow Baseline to execute the configured agent")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	agentCommand := fs.String("agent-command", "", "agent command; prompt is available as BASELINE_PROMPT")
+	packs := fs.String("packs", "enabled", "question packs to run: enabled, all, or comma-separated pack ids")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -186,7 +195,7 @@ func cmdCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if *fast {
 		mode = "fast"
 	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: mode, RunAgent: *runAgent, AgentCommand: *agentCommand})
+	run, err := RunBaseline(ctx, RunOptions{Mode: mode, RunAgent: *runAgent, AgentCommand: *agentCommand, Packs: *packs})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -278,62 +287,13 @@ func cmdCompare(stdout, stderr io.Writer) int {
 		return 1
 	}
 	if len(findings) == 0 {
-		fmt.Fprintln(stdout, "No known-good drift detected.")
+		fmt.Fprintln(stdout, "No Good Baseline drift detected.")
 		return 0
 	}
 	for _, f := range findings {
 		fmt.Fprintf(stdout, "- %s: %s\n", f.CheckID, f.Message)
 	}
 	return 0
-}
-
-func cmdKnownGood(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: baseline known-good mark|list")
-		return 2
-	}
-	db, err := openDB()
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	defer db.Close()
-	switch args[0] {
-	case "mark":
-		fs := flag.NewFlagSet("known-good mark", flag.ContinueOnError)
-		fs.SetOutput(stderr)
-		label := fs.String("label", "known-good", "label")
-		if err := fs.Parse(args[1:]); err != nil {
-			return 2
-		}
-		runID := ""
-		if fs.NArg() > 0 {
-			runID = fs.Arg(0)
-		} else {
-			run, err := latestRun(db)
-			if err != nil {
-				fmt.Fprintln(stderr, err)
-				return 1
-			}
-			runID = run.ID
-		}
-		if err := markKnownGood(db, runID, *label); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "Marked %s as %s\n", runID, *label)
-		return 0
-	case "list":
-		goods, err := listKnownGoods(db)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		return writeJSON(stdout, stderr, goods)
-	default:
-		fmt.Fprintln(stderr, "usage: baseline known-good mark|list")
-		return 2
-	}
 }
 
 func cmdInstall(args []string, stdout, stderr io.Writer) int {

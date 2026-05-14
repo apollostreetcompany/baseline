@@ -1,6 +1,6 @@
-# Baseline.ai v0
+# Baseline.ai v0.1
 
-Baseline is a local-first health check and drift monitor for coding-agent workstations. It stores runs in SQLite, exposes a small MCP server, compares local state against a known-good run, and can sync redacted run summaries to a Cloudflare Worker backed by Neon.
+Baseline is a local-first Go/SQLite CLI and MCP server for coding-agent workstation health. It checks local runtime, repo, MCP, redaction, latency, and optional OpenClaw behavior, then compares new runs against accepted Good Baselines.
 
 Live launch surface:
 
@@ -15,9 +15,7 @@ Live launch surface:
 
 ```sh
 go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
-baseline init
-baseline install openclaw
-openclaw mcp list
+baseline bootstrap --openclaw
 ```
 
 Local source build:
@@ -26,40 +24,101 @@ Local source build:
 go build -o bin/baseline ./cmd/baseline
 ```
 
-This machine is already configured with:
+## Local OpenClaw Dogfood
 
-- Baseline MCP registered in OpenClaw as `baseline`
-- Cloud sync enabled against the deployed Worker
-- API token stored locally in `~/.baseline/config.json`
-- A post-MCP known-good run marked as `post-mcp-clean`
+Run these commands for a local-only OpenClaw bootstrap, first Good Baseline, and drift comparison:
+
+```sh
+baseline bootstrap --openclaw
+baseline bootstrap preview
+baseline bootstrap run
+baseline bootstrap accept --label clean-local
+baseline compare
+```
+
+Use `baseline check --fast` for local runtime/repo/MCP checks when you do not want to send OpenClaw probe messages. Fast mode never runs the agent.
+`baseline bootstrap run` defaults to the 14-question Baseline Core pack; use `--packs enabled` or `--packs all` after reviewing the preview.
+
+## Bootstrap Lifecycle
+
+`baseline bootstrap` is idempotent. It creates `~/.baseline/config.json`, `~/.baseline/baseline.db`, report/redaction directories, runs SQLite migrations, detects OpenClaw, registers the Baseline stdio MCP server when `--openclaw` is set, and prints the next command. It does not enable cloud sync or execute agent prompts unless the user supplies explicit sync or runner flags.
+
+Optional sync setup stays explicit:
+
+```sh
+baseline bootstrap --openclaw --sync-url https://baseline-ai.ryan-borker.workers.dev --sync-token <token>
+```
+
+## Good Baselines
+
+Good Baselines are manually accepted local anchors. v0.1 keeps up to three active Good Baselines per workspace so users can preserve a small set of trusted states without turning every passing run into truth.
+
+```sh
+baseline good accept [RUN_ID] --label clean-local
+baseline good list
+baseline good replace [RUN_ID] --slot 1 --label clean-local
+baseline compare
+```
+
+`baseline compare` uses the accepted Good Baselines for the current workspace/config. Baseline refuses a fourth active Good Baseline until the user replaces slot 1, 2, or 3.
 
 ## Run
 
 ```sh
-./bin/baseline check --fast
-./bin/baseline check --full
-./bin/baseline check --full --run-agent
-./bin/baseline latest --json
-./bin/baseline report
-./bin/baseline compare
-./bin/baseline sync status
-./bin/baseline sync push
-./bin/baseline schedule install --at 09:00
-./bin/baseline schedule status
-./bin/baseline schedule run
+baseline check --fast
+baseline check --full --run-agent
+baseline latest --json
+baseline report
+baseline compare
+baseline sync status
+baseline sync push
+baseline schedule install --at 09:00
+baseline schedule status
+baseline schedule run
 ```
 
-Fast mode never runs the agent. Full mode includes the 12-question baseline pack but skips execution until `--run-agent` or `BASELINE_RUN_AGENT=1` is set.
+Fast mode never runs the agent. Full mode sends real OpenClaw probe messages only when `--run-agent` is set. Bootstrap run always uses explicit probe execution because the user asked to establish the first baseline, and defaults to the 14-question Baseline Core pack.
+
+## OpenClaw Timing and Tokens
+
+For OpenClaw behavior checks, Baseline invokes the real handler path:
+
+```sh
+openclaw agent --json --session-id <baseline-session-id> --message <probe>
+```
+
+For every probe, Baseline records `system_send_at` immediately before sending the message and `baseline_received_at` immediately after receiving the completed response. It then correlates `openclaw sessions --json` by session ID/time window for model/provider and token metadata. If token metadata cannot be correlated, `token_status` is `unavailable`; if OpenClaw reports stale metadata, `token_status` is `stale`. Baseline never estimates tokens from text length.
+
+OpenClaw's MCP bridge is Gateway-backed: live events only exist while the bridge session is connected, and older history should be read from transcript tools. Token and cost visibility follows OpenClaw usage configuration; OAuth-backed sessions may expose tokens without dollar cost.
+
+References: [OpenClaw MCP bridge](https://docs.openclaw.ai/cli/mcp), [OpenClaw token usage](https://openclawlab.com/en/docs/reference/token-use/).
+
+## Config CLI Shape
+
+Config is local JSON under `~/.baseline/config.json` with file mode `0600`. Token reads should display only `token_set:true`.
+
+```sh
+baseline config show
+baseline config file
+baseline config get cloud_sync --json
+baseline config set cloud_sync true
+baseline config set api_base_url <url>
+baseline config set api_token <token>
+baseline config set agent_command '<command using BASELINE_PROMPT>'
+baseline config set monitor_packs.workflow_test.enabled true
+baseline config set monitor_packs.self_log_execution.enabled false
+baseline config validate --json
+```
 
 ## MCP Tools
 
 The MCP server exposes seven tools:
 
 - `baseline_check`
-- `baseline_latest`
+- `baseline_bootstrap`
+- `baseline_good`
 - `baseline_report`
 - `baseline_compare`
-- `baseline_mark_known_good`
 - `baseline_schedule`
 - `baseline_scrub_preview`
 

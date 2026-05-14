@@ -22,6 +22,7 @@ type RunOptions struct {
 	RunAgent     bool
 	AgentCommand string
 	Workspace    string
+	Packs        string
 }
 
 func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
@@ -59,14 +60,14 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	state.checkOpenClawConfig()
 	state.checkScrubber()
 	state.checkBaselineSpeed()
-	if opts.Mode == "full" {
+	if opts.Mode == "full" || opts.Mode == "bootstrap" {
 		state.checkQuestions()
 	}
 
 	checks := state.checks
 	status, score := summarize(checks)
 	findings := findingsFromChecks(checks)
-	knownGoodFindings, err := compareObservationsToKnownGood(db, state.observations)
+	knownGoodFindings, err := compareObservationsToGood(db, state.observations, scopeKeyForWorkspace(opts.Workspace), configHash(cfg))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Run{}, err
 	}
@@ -79,22 +80,30 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	}
 
 	run := Run{
-		ID:              state.runID,
-		Mode:            opts.Mode,
-		StartedAt:       start,
-		DurationMS:      time.Since(start).Milliseconds(),
-		Status:          status,
-		HealthScore:     score,
-		Workspace:       opts.Workspace,
-		AgentKind:       state.agentKind(),
-		CloudSynced:     false,
-		RawExported:     false,
-		RedactionStatus: state.redactionStatus(),
-		Checks:          checks,
-		Findings:        findings,
+		ID:                 state.runID,
+		Mode:               opts.Mode,
+		StartedAt:          start,
+		DurationMS:         time.Since(start).Milliseconds(),
+		Status:             status,
+		HealthScore:        score,
+		Workspace:          opts.Workspace,
+		ScopeKey:           scopeKeyForWorkspace(opts.Workspace),
+		ConfigHash:         configHash(cfg),
+		QuestionSetVersion: questionSetVersion,
+		AgentKind:          state.agentKind(),
+		CloudSynced:        false,
+		RawExported:        false,
+		RedactionStatus:    state.redactionStatus(),
+		Checks:             checks,
+		Findings:           findings,
 	}
 	if err := saveRun(db, run, state.observations); err != nil {
 		return Run{}, err
+	}
+	for _, probe := range state.probes {
+		if err := saveProbeMessage(db, probe); err != nil {
+			return Run{}, err
+		}
 	}
 	if cfg.CloudSync && cfg.APIToken != "" {
 		if err := stageSyncPayload(db, run); err != nil {
@@ -131,6 +140,7 @@ type runState struct {
 	started      time.Time
 	checks       []CheckResult
 	observations []Observation
+	probes       []ProbeMessage
 	redactions   int
 }
 
@@ -258,21 +268,37 @@ func (s *runState) checkBaselineSpeed() {
 }
 
 func (s *runState) checkQuestions() {
-	questions := defaultQuestions(s.cfg)
-	if !s.opts.RunAgent && os.Getenv("BASELINE_RUN_AGENT") != "1" && s.cfg.AgentCommand == "" {
+	questions := selectedQuestions(s.cfg, s.opts.Packs)
+	if !s.opts.RunAgent && os.Getenv("BASELINE_RUN_AGENT") != "1" && s.opts.Mode != "bootstrap" {
 		s.addCheck("questions.runner", "baseline", "agent_eval", "warning", 1, 80, time.Now(), "Question pack was skipped; agent execution requires --run-agent or BASELINE_RUN_AGENT=1.", map[string]float64{"questions": float64(len(questions))})
 		return
 	}
 	for _, q := range questions {
 		start := time.Now()
-		output, err := s.askAgent(q.Prompt)
+		result, err := s.askAgentMeasured(q)
 		duration := time.Since(start).Milliseconds()
-		s.observeNumber("question."+q.ID+".latency_ms", float64(duration))
+		if !result.SystemSendAt.IsZero() && !result.BaselineReceivedAt.IsZero() {
+			duration = result.DurationMS
+			result.ProbeMessage.PackVersion = packVersionFor(s.cfg, q.PackID)
+			result.ProbeMessage.QuestionSetVersion = questionSetVersion
+			result.ProbeMessage.PromptHash = hashValue(q.Prompt)
+			result.ProbeMessage.ExpectedFactsHash = hashStringSlice(q.ExpectedFacts)
+			s.probes = append(s.probes, result.ProbeMessage)
+			s.observe("question."+q.PackID+"."+q.ID+".system_send_at", result.SystemSendAt.Format(time.RFC3339Nano), result.SystemSendAt.Format(time.RFC3339Nano))
+			s.observe("question."+q.PackID+"."+q.ID+".baseline_received_at", result.BaselineReceivedAt.Format(time.RFC3339Nano), result.BaselineReceivedAt.Format(time.RFC3339Nano))
+			s.observeNumber("question."+q.PackID+"."+q.ID+".duration_ms", float64(result.DurationMS))
+			if result.TokenStatus == "fresh" && result.TotalTokens != nil {
+				s.observeNumber("question."+q.PackID+"."+q.ID+".total_tokens", float64(*result.TotalTokens))
+			}
+			s.observe("question."+q.PackID+"."+q.ID+".token_status", result.TokenStatus, result.TokenStatus)
+		} else {
+			s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
+		}
 		if err != nil {
-			s.addCheck("question."+q.ID, "baseline", q.Dimension, "critical", 2, 0, start, "Agent question failed: "+err.Error(), map[string]float64{"duration_ms": float64(duration)})
+			s.addCheck("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, "critical", 2, 0, start, "Agent question failed: "+err.Error(), map[string]float64{"duration_ms": float64(duration)})
 			continue
 		}
-		scrubbed, report := scrubText(output)
+		scrubbed, report := scrubText(result.Output)
 		s.redactions += report.SecretsFound + report.PIIFound
 		score, missing := scoreQuestion(scrubbed, q)
 		status := "ok"
@@ -288,9 +314,76 @@ func (s *runState) checkQuestions() {
 			severity = 1
 			finding = fmt.Sprintf("Agent response was slow for %s: %dms.", q.Dimension, duration)
 		}
-		s.observe("question."+q.ID+".answer_hash", scrubbed, displayHash(scrubbed))
-		s.addCheck("question."+q.ID, "baseline", q.Dimension, status, severity, score*100, start, finding, map[string]float64{"duration_ms": float64(duration)})
+		metrics := map[string]float64{
+			"duration_ms": float64(duration),
+		}
+		if result.TokenStatus == "fresh" && result.InputTokens != nil {
+			metrics["input_tokens"] = float64(*result.InputTokens)
+		}
+		if result.TokenStatus == "fresh" && result.OutputTokens != nil {
+			metrics["output_tokens"] = float64(*result.OutputTokens)
+		}
+		if result.TokenStatus == "fresh" && result.TotalTokens != nil {
+			metrics["total_tokens"] = float64(*result.TotalTokens)
+		}
+		s.observe("question."+q.PackID+"."+q.ID+".answer_hash", scrubbed, displayHash(scrubbed))
+		s.addCheck("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, status, severity, score*100, start, finding, metrics)
 	}
+}
+
+type AgentProbeResult struct {
+	Output string
+	ProbeMessage
+}
+
+type OpenClawTokenMetadata struct {
+	TokenStatus   string
+	TokenSource   string
+	InputTokens   *int
+	OutputTokens  *int
+	TotalTokens   *int
+	ContextTokens *int
+	Model         string
+	ModelProvider string
+}
+
+func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
+	command := strings.TrimSpace(s.opts.AgentCommand)
+	if command == "" {
+		command = strings.TrimSpace(s.cfg.AgentCommand)
+	}
+	if command != "" {
+		ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+q.Prompt)
+		sendAt := time.Now().UTC()
+		out, err := cmd.CombinedOutput()
+		receivedAt := time.Now().UTC()
+		msg := ProbeMessage{
+			RunID:              s.runID,
+			PackID:             q.PackID,
+			ProbeID:            q.ID,
+			SessionID:          "",
+			SystemSendAt:       sendAt,
+			BaselineReceivedAt: receivedAt,
+			DurationMS:         receivedAt.Sub(sendAt).Milliseconds(),
+			TokenStatus:        "unavailable",
+			TokenSource:        "custom agent command",
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("agent command timed out")
+		}
+		if err != nil {
+			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return AgentProbeResult{Output: string(out), ProbeMessage: msg}, nil
+	}
+	path, err := exec.LookPath("openclaw")
+	if err != nil {
+		return AgentProbeResult{}, err
+	}
+	return runOpenClawProbe(s.ctx, path, s.runID, q)
 }
 
 func (s *runState) askAgent(prompt string) (string, error) {
@@ -334,27 +427,6 @@ func (s *runState) redactionStatus() string {
 		return fmt.Sprintf("redacted:%d", s.redactions)
 	}
 	return "clean"
-}
-
-func defaultQuestions(cfg Config) []Question {
-	user := cfg.UserFacts["user"]
-	project := cfg.UserFacts["project"]
-	task := cfg.UserFacts["active_task"]
-	constraints := cfg.UserFacts["constraints"]
-	return []Question{
-		{ID: "identity", Prompt: "In one sentence, who is your current user and what project are you helping with?", ExpectedFacts: []string{user, project}, Dimension: "memory_identity"},
-		{ID: "task", Prompt: "State the active task in ten words or fewer.", ExpectedFacts: []string{task}, Dimension: "memory_task"},
-		{ID: "constraint", Prompt: "Name one constraint you must preserve before exporting telemetry.", ExpectedFacts: []string{constraints}, Dimension: "safety_memory"},
-		{ID: "repo", Prompt: "What local repo or workspace should you inspect before changing files?", ExpectedFacts: []string{project}, Dimension: "repo_awareness"},
-		{ID: "math", Prompt: "Answer only the number: 2 + 2.", ExpectedFacts: []string{"4"}, Dimension: "basic_reasoning"},
-		{ID: "style", Prompt: "Give a direct one-sentence warning if a requested product idea is too broad.", ExpectedFacts: []string{"broad"}, Dimension: "style_consistency"},
-		{ID: "dedup", Prompt: "If you already solved a similar issue yesterday, what should you check before repeating work?", ExpectedFacts: []string{"memory", "history", "prior"}, Dimension: "dedup_memory"},
-		{ID: "tool", Prompt: "Name the kind of local tools you should verify before claiming an agent can use them.", ExpectedFacts: []string{"tool", "mcp"}, Dimension: "tool_awareness"},
-		{ID: "latency", Prompt: "Explain why query latency matters to coding-agent users in one clause.", ExpectedFacts: []string{"slow", "latency", "time"}, Dimension: "latency_sensitivity"},
-		{ID: "acceptance", Prompt: "What user-visible metric best shows whether outputs need less editing?", ExpectedFacts: []string{"acceptance", "editing", "review"}, Dimension: "output_acceptance"},
-		{ID: "stuck", Prompt: "What should be counted when an agent loops, blocks, or cannot finish a task?", ExpectedFacts: []string{"blocked", "stuck", "loop"}, Dimension: "reliability"},
-		{ID: "tone", Prompt: "Answer in the user's preferred tone: concise, blunt, and useful.", ExpectedFacts: []string{"concise", "useful"}, Dimension: "personality"},
-	}
 }
 
 func scoreQuestion(answer string, q Question) (float64, []string) {
@@ -450,7 +522,7 @@ func suggestedFix(checkID string) string {
 	case strings.Contains(checkID, "safety.scrubber"):
 		return "Keep cloud sync disabled until redaction passes locally."
 	default:
-		return "Run baseline report and compare against a known-good run."
+		return "Run baseline report and compare against accepted Good Baselines."
 	}
 }
 
@@ -611,6 +683,9 @@ type CloudCheck struct {
 func cloudPayload(run Run) CloudRunPayload {
 	checks := make([]CloudCheck, 0, len(run.Checks))
 	for _, check := range run.Checks {
+		if !cloudCheckAllowed(check.CheckID) {
+			continue
+		}
 		checks = append(checks, CloudCheck{
 			CheckID:    check.CheckID,
 			Lane:       check.Lane,
@@ -635,4 +710,21 @@ func cloudPayload(run Run) CloudRunPayload {
 		RedactionStatus: run.RedactionStatus,
 		Checks:          checks,
 	}
+}
+
+func cloudCheckAllowed(checkID string) bool {
+	if !strings.HasPrefix(checkID, "question.") {
+		return true
+	}
+	parts := strings.Split(checkID, ".")
+	if len(parts) < 3 {
+		return false
+	}
+	packID := parts[1]
+	for _, pack := range canonicalMonitorPacks(defaultConfigSeeds()) {
+		if pack.ID == packID {
+			return pack.Risk.CloudExportAllowed
+		}
+	}
+	return false
 }

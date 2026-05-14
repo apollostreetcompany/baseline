@@ -39,13 +39,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 11: Added pnpm/npm wrapper package, OpenClaw plugin bundle, and Go release path
 - [x] Bead 12: Deployed Worker and verified local run sync renders on dashboard APIs
 - [x] Bead 13: Added daily launchd self-check schedule and OpenClaw-triggerable `baseline_schedule` MCP tool
+- [x] Bead 14: Launched v0.1 bootstrap/Good Baseline flow with updated 14-question Baseline Core, scoped Good Baseline slots, real OpenClaw send/receive timing, fresh-only token metadata, OpenClaw-style config CLI, updated MCP tools, local binary install, and deployed Worker docs/question set
 
 ### Now
-- Bead 13 complete. Daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time, and OpenClaw can trigger `baseline_schedule` with `action: run`; smoke run `run_dii2iaoed2xk` returned score `90` and `cloud_synced:true`.
+- Bead 14 complete. `/opt/homebrew/bin/baseline` is updated, OpenClaw plugin still loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
 
 ### Next
-- Bead 14: Split dogfood admin token from ingest token before external pilot.
-- Bead 15: Stripe entitlement or API token/workspace model, depending on available credentials.
+- Bead 15: Split dogfood admin token from ingest token before external pilot.
+- Bead 16: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions

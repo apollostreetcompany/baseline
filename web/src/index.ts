@@ -263,22 +263,24 @@ function demoRun(): Record<string, unknown> {
 function defaultQuestionSet(): CanonicalQuestionSet & { active?: boolean } {
   return {
     slug: "baseline-core",
-    version: "2026-05-14",
-    title: "Baseline Core",
+    version: "0.1.0",
+    title: "Baseline Core v0.1",
     active: true,
     questions: [
-      { id: "identity", prompt: "In one sentence, who is your current user and what project are you helping with?", dimension: "memory_identity", expected_facts: ["user", "project"], required: true },
-      { id: "task", prompt: "State the active task in ten words or fewer.", dimension: "memory_task", expected_facts: ["active task"], required: true },
-      { id: "constraint", prompt: "Name one constraint you must preserve before exporting telemetry.", dimension: "safety_memory", expected_facts: ["raw prompts", "secrets"], required: true },
-      { id: "repo", prompt: "What local repo or workspace should you inspect before changing files?", dimension: "repo_awareness", expected_facts: ["repo", "workspace"], required: true },
+      { id: "model", prompt: "What is your current model and provider?", dimension: "runtime_identity", expected_facts: [], required: true },
+      { id: "context_window", prompt: "What is your approximate context window or configured context limit?", dimension: "runtime_identity", expected_facts: [], required: true },
+      { id: "date", prompt: "Answer only today's date in local time.", dimension: "basic_reasoning", expected_facts: [], required: true },
+      { id: "identity", prompt: "Who are you in this environment?", dimension: "identity", expected_facts: [], required: true },
+      { id: "primary_goal", prompt: "What is your primary goal when helping me?", dimension: "identity", expected_facts: [], required: true },
+      { id: "tools", prompt: "What local tools and MCP servers can you currently use?", dimension: "tool_awareness", expected_facts: ["tool", "mcp"], required: true },
+      { id: "workspace", prompt: "What workspace or repo are you operating in, and is it clean or dirty?", dimension: "repo_awareness", expected_facts: [], required: true },
       { id: "math", prompt: "Answer only the number: 2 + 2.", dimension: "basic_reasoning", expected_facts: ["4"], required: true },
-      { id: "style", prompt: "Give a direct one-sentence warning if a requested product idea is too broad.", dimension: "style_consistency", expected_facts: ["broad"], required: true },
-      { id: "dedup", prompt: "If you already solved a similar issue yesterday, what should you check before repeating work?", dimension: "dedup_memory", expected_facts: ["memory", "history", "prior"], required: true },
-      { id: "tool", prompt: "Name the kind of local tools you should verify before claiming an agent can use them.", dimension: "tool_awareness", expected_facts: ["tool", "mcp"], required: true },
-      { id: "latency", prompt: "Explain why query latency matters to coding-agent users in one clause.", dimension: "latency_sensitivity", expected_facts: ["slow", "latency", "time"], required: true },
-      { id: "acceptance", prompt: "What user-visible metric best shows whether outputs need less editing?", dimension: "output_acceptance", expected_facts: ["acceptance", "editing", "review"], required: true },
-      { id: "stuck", prompt: "What should be counted when an agent loops, blocks, or cannot finish a task?", dimension: "reliability", expected_facts: ["blocked", "stuck", "loop"], required: true },
-      { id: "tone", prompt: "Answer in the user's preferred tone: concise, blunt, and useful.", dimension: "personality", expected_facts: ["concise", "useful"], required: true }
+      { id: "variance_1", prompt: "Answer only the word: baseline.", dimension: "latency_variance", expected_facts: ["baseline"], required: true },
+      { id: "variance_2", prompt: "Answer only the word: baseline.", dimension: "latency_variance", expected_facts: ["baseline"], required: true },
+      { id: "variance_3", prompt: "Answer only the word: baseline.", dimension: "latency_variance", expected_facts: ["baseline"], required: true },
+      { id: "variance_4", prompt: "Answer only the word: baseline.", dimension: "latency_variance", expected_facts: ["baseline"], required: true },
+      { id: "variance_5", prompt: "Answer only the word: baseline.", dimension: "latency_variance", expected_facts: ["baseline"], required: true },
+      { id: "ops_change", prompt: "Report any obvious tool, MCP, repo, or config changes since the accepted Good baseline. If unknown, say unknown.", dimension: "change_awareness", expected_facts: [], required: true }
     ]
   };
 }
@@ -547,7 +549,7 @@ function landingPage(env: Env): string {
       <section class="band two">
         <div>
           <h2>The wedge</h2>
-          <p>Baseline is not another generic LLM observability product. It is a daily health check for local coding-agent workstations: memory, tools, MCP state, repo awareness, speed, style, and known-good drift.</p>
+          <p>Baseline is not another generic LLM observability product. It is a daily health check for local coding-agent workstations: memory, tools, MCP state, repo awareness, speed, style, and Good Baseline drift.</p>
           <ul class="checks">
             <li>Detects OpenClaw MCP registration changes and local tool visibility.</li>
             <li>Times the agent on simple memory, repo, safety, style, and reliability prompts.</li>
@@ -558,7 +560,7 @@ function landingPage(env: Env): string {
           <h3>Daily alert</h3>
           <div class="alert warning">Memory identity changed from accepted baseline.</div>
           <div class="alert ok">Scrubber passed synthetic secret test.</div>
-          <div class="alert bad">p95 agent response +63% versus known-good.</div>
+          <div class="alert bad">p95 agent response +63% versus Good Baselines.</div>
         </div>
       </section>
 
@@ -566,8 +568,8 @@ function landingPage(env: Env): string {
         <h2>Three minute setup</h2>
         <div class="steps">
           <div><span>1</span><strong>Install</strong><code>go install github.com/apollostreetcompany/baseline/cmd/baseline@latest</code></div>
-          <div><span>2</span><strong>Register</strong><code>baseline init --register-openclaw</code></div>
-          <div><span>3</span><strong>Check</strong><code>baseline check --full --run-agent</code></div>
+          <div><span>2</span><strong>Bootstrap</strong><code>baseline bootstrap --openclaw</code></div>
+          <div><span>3</span><strong>Run</strong><code>baseline bootstrap run</code></div>
         </div>
       </section>
 
@@ -580,7 +582,7 @@ function landingPage(env: Env): string {
           <article>
             <h3>Local</h3>
             <p class="price">$0</p>
-            <p>SQLite, MCP, scrub preview, known-good compare.</p>
+            <p>SQLite, MCP, scrub preview, Good Baseline compare.</p>
             <a class="button secondary" href="/docs/mcp">Install</a>
           </article>
           <article>
@@ -656,16 +658,17 @@ function adminPage(env: Env): string {
 
 function mcpDocsPage(env: Env): string {
   const install = `go build -o bin/baseline ./cmd/baseline
-./bin/baseline init
-./bin/baseline install openclaw
+./bin/baseline bootstrap --openclaw
+./bin/baseline bootstrap preview
+./bin/baseline bootstrap run
+./bin/baseline bootstrap accept --label clean-local
 openclaw mcp list
-./bin/baseline check --fast
-./bin/baseline check --full --run-agent`;
+./bin/baseline compare`;
   return layout(env, "Baseline MCP installation", `
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
       <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: check, latest, report, compare, mark known-good, schedule, and scrub preview. Fast checks are local-only. Full checks execute the agent only with explicit opt-in.</p>
+      <p>Baseline exposes seven legible MCP tools: check, bootstrap, good, report, compare, schedule, and scrub preview. Fast checks are local-only. Bootstrap and full checks execute the agent only with explicit opt-in.</p>
       <pre><code>${escapeHTML(install)}</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
@@ -673,9 +676,10 @@ baseline check --fast
 baseline sync push</code></pre>
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
-      <h2>Recommended first known-good</h2>
-      <pre><code>baseline check --fast
-baseline known-good mark --label clean-local
+      <h2>Recommended first Good Baseline</h2>
+      <pre><code>baseline bootstrap preview
+baseline bootstrap run
+baseline bootstrap accept --label clean-local
 baseline compare</code></pre>
     </main>
   `, softwareJsonLD(env));

@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "test": "node --check bin/baseline.js",
-    "pack:dry-run": "pnpm pack --dry-run"
+    "pack:dry-run": "npm pack --dry-run"
   },
   "engines": {
     "node": ">=18"

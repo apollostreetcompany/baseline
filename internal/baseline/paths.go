@@ -46,14 +46,11 @@ func defaultConfig() Config {
 	return Config{
 		Version:       1,
 		WorkspaceName: "baseline-local",
-		UserFacts: map[string]string{
-			"user":        "unknown",
-			"project":     "Baseline.ai",
-			"active_task": "baseline drift monitor",
-			"constraints": "do not export raw prompts or secrets",
-		},
-		CloudSync:  false,
-		APIBaseURL: "https://baseline-ai.ryan-borker.workers.dev",
+		UserFacts:     defaultConfigSeeds(),
+		MemorySeeds:   defaultMemorySeeds(),
+		CloudSync:     false,
+		APIBaseURL:    "https://baseline-ai.ryan-borker.workers.dev",
+		MonitorPacks:  defaultMonitorPackSelections(),
 		Packs: PackConfig{
 			FactChecks:    true,
 			StyleChecks:   true,
@@ -79,6 +76,12 @@ func loadConfig() (Config, error) {
 	}
 	if cfg.UserFacts == nil {
 		cfg.UserFacts = defaultConfig().UserFacts
+	}
+	if len(cfg.MemorySeeds) == 0 {
+		cfg.MemorySeeds = defaultMemorySeeds()
+	}
+	if len(cfg.MonitorPacks) == 0 {
+		cfg.MonitorPacks = defaultMonitorPackSelections()
 	}
 	if cfg.APIBaseURL == "" {
 		cfg.APIBaseURL = defaultConfig().APIBaseURL

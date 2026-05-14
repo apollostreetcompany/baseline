@@ -2,13 +2,85 @@ package baseline
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestMigrationAddsBead14ColumnsToExistingDB(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	if err := os.MkdirAll(baseDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old, err := sql.Open("sqlite", dbPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = old.Exec(`CREATE TABLE runs (
+		id TEXT PRIMARY KEY,
+		started_at TEXT NOT NULL,
+		duration_ms INTEGER NOT NULL,
+		status TEXT NOT NULL,
+		health_score INTEGER NOT NULL,
+		mode TEXT NOT NULL,
+		workspace TEXT NOT NULL,
+		agent_kind TEXT NOT NULL,
+		cloud_synced INTEGER NOT NULL DEFAULT 0,
+		raw_exported INTEGER NOT NULL DEFAULT 0,
+		redaction_status TEXT NOT NULL
+	);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+
+	db, err := openDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, col := range []string{"scope_key", "config_hash", "question_set_version"} {
+		if !testHasColumn(t, db, "runs", col) {
+			t.Fatalf("migration did not add runs.%s", col)
+		}
+	}
+	for _, col := range []string{"pack_version", "prompt_hash", "token_source"} {
+		if !testHasColumn(t, db, "probe_messages", col) {
+			t.Fatalf("migration did not add probe_messages.%s", col)
+		}
+	}
+}
+
+func testHasColumn(t *testing.T, db *sql.DB, table, column string) bool {
+	t.Helper()
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatal(err)
+		}
+		if name == column {
+			return true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return false
+}
 
 func TestKnownGoodCompareFindsChangedObservation(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
@@ -45,7 +117,7 @@ func TestKnownGoodCompareFindsChangedObservation(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("expected one finding, got %d: %+v", len(findings), findings)
 	}
-	if findings[0].CheckID != "known_good.diff" {
+	if findings[0].CheckID != "good_baseline.diff" {
 		t.Fatalf("unexpected finding: %+v", findings[0])
 	}
 }

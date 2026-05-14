@@ -82,11 +82,23 @@ openclaw plugins install ./baseline-openclaw-plugin-v0.1.0.tgz
 After installing any distribution, verify the same local command surface:
 
 ```sh
-baseline init
+baseline bootstrap --openclaw
 baseline check --fast
+baseline good accept --label clean-local
+baseline compare
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | baseline serve mcp
 ```
 
-The MCP response should include `baseline_check`, `baseline_latest`,
-`baseline_report`, `baseline_compare`, `baseline_mark_known_good`,
-`baseline_schedule`, and `baseline_scrub_preview`.
+The MCP response should include `baseline_check`, `baseline_bootstrap`,
+`baseline_good`, `baseline_report`, `baseline_compare`, `baseline_schedule`,
+and `baseline_scrub_preview`.
+
+For an OpenClaw runner smoke, use the explicit bootstrap runner:
+
+```sh
+baseline bootstrap preview
+baseline bootstrap run
+baseline bootstrap accept --label clean-local
+```
+
+This path must use real OpenClaw message timing and token metadata when OpenClaw exposes it. The default bootstrap run is the 14-question Baseline Core pack; wider packs require `--packs enabled` or `--packs all`. Missing session usage should be reported as unavailable, not estimated.
