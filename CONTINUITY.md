@@ -37,17 +37,20 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 9: Added retryable local sync outbox and real Worker dashboard run APIs
 - [x] Bead 10: Added admin/versioned canonical question sets and LLM evaluator endpoint
 - [x] Bead 11: Added pnpm/npm wrapper package, OpenClaw plugin bundle, and Go release path
+- [x] Bead 12: Deployed Worker and verified local run sync renders on dashboard APIs
 
 ### Now
-- Bead 11 complete. The Go module path now matches `github.com/apollostreetcompany/baseline`, `package/` contains the npm/pnpm wrapper, and `openclaw-plugin/` is installed locally as a linked OpenClaw bundle for smoke testing.
+- Bead 12 complete. Worker version `b143ba10-4546-4d89-8ae5-3c5d920ec326` is deployed, local run `run_dii09roqdp20` synced, dashboard APIs render it, and admin evaluation `99161224-a275-48b6-b7a1-489b9f73a916` was stored with the heuristic evaluator.
 
 ### Next
-- Bead 12: Deploy current Worker, configure required secrets, and smoke-test pushed local runs rendering on the dashboard.
 - Bead 13: Stripe entitlement or API token/workspace model, depending on available credentials.
+- Bead 14: Split dogfood admin token from ingest token before external pilot.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
 - Which Stripe plan IDs or payment links should be used for Pro and Team?
+- What separate admin token should replace the temporary dogfood reuse of the sync token?
+- Which OpenAI evaluator key/model should be used for paid pilot evaluation?
 - Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
 - Should `baseline check --full --run-agent` be dogfooded now, or kept manual until prompt cost/runtime behavior is reviewed?
 - Should token issuance be self-serve in the dashboard or manual for the first ten users?
@@ -66,6 +69,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/web/src/index.ts`
 - `/Users/future/dev/baseline/README.md`
 - `/Users/future/dev/baseline/docs/PUBLISHING.md`
+- `/Users/future/dev/baseline/docs/DEPLOYMENT.md`
 - `/Users/future/dev/baseline/package`
 - `/Users/future/dev/baseline/openclaw-plugin`
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
