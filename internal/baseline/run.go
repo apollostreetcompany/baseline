@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -145,6 +146,10 @@ type runState struct {
 }
 
 func (s *runState) addCheck(checkID, lane, kind, status string, severity int, score float64, started time.Time, finding string, metrics map[string]float64) {
+	s.addCheckWithDuration(checkID, lane, kind, status, severity, score, time.Since(started).Milliseconds(), finding, metrics)
+}
+
+func (s *runState) addCheckWithDuration(checkID, lane, kind, status string, severity int, score float64, durationMS int64, finding string, metrics map[string]float64) {
 	s.checks = append(s.checks, CheckResult{
 		ID:         fmt.Sprintf("%s:%03d", s.runID, len(s.checks)+1),
 		CheckID:    checkID,
@@ -153,7 +158,7 @@ func (s *runState) addCheck(checkID, lane, kind, status string, severity int, sc
 		Status:     status,
 		Severity:   severity,
 		Score:      score,
-		DurationMS: time.Since(started).Milliseconds(),
+		DurationMS: durationMS,
 		Finding:    finding,
 		Metrics:    metrics,
 	})
@@ -273,62 +278,127 @@ func (s *runState) checkQuestions() {
 		s.addCheck("questions.runner", "baseline", "agent_eval", "warning", 1, 80, time.Now(), "Question pack was skipped; agent execution requires --run-agent or BASELINE_RUN_AGENT=1.", map[string]float64{"questions": float64(len(questions))})
 		return
 	}
-	for _, q := range questions {
-		start := time.Now()
-		result, err := s.askAgentMeasured(q)
-		duration := time.Since(start).Milliseconds()
-		if !result.SystemSendAt.IsZero() && !result.BaselineReceivedAt.IsZero() {
-			duration = result.DurationMS
-			result.ProbeMessage.PackVersion = packVersionFor(s.cfg, q.PackID)
-			result.ProbeMessage.QuestionSetVersion = questionSetVersion
-			result.ProbeMessage.PromptHash = hashValue(q.Prompt)
-			result.ProbeMessage.ExpectedFactsHash = hashStringSlice(q.ExpectedFacts)
-			s.probes = append(s.probes, result.ProbeMessage)
-			s.observe("question."+q.PackID+"."+q.ID+".system_send_at", result.SystemSendAt.Format(time.RFC3339Nano), result.SystemSendAt.Format(time.RFC3339Nano))
-			s.observe("question."+q.PackID+"."+q.ID+".baseline_received_at", result.BaselineReceivedAt.Format(time.RFC3339Nano), result.BaselineReceivedAt.Format(time.RFC3339Nano))
-			s.observeNumber("question."+q.PackID+"."+q.ID+".duration_ms", float64(result.DurationMS))
-			if result.TokenStatus == "fresh" && result.TotalTokens != nil {
-				s.observeNumber("question."+q.PackID+"."+q.ID+".total_tokens", float64(*result.TotalTokens))
-			}
-			s.observe("question."+q.PackID+"."+q.ID+".token_status", result.TokenStatus, result.TokenStatus)
-		} else {
-			s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
-		}
-		if err != nil {
-			s.addCheck("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, "critical", 2, 0, start, "Agent question failed: "+err.Error(), map[string]float64{"duration_ms": float64(duration)})
-			continue
-		}
-		scrubbed, report := scrubText(result.Output)
-		s.redactions += report.SecretsFound + report.PIIFound
-		score, missing := scoreQuestion(scrubbed, q)
-		status := "ok"
-		severity := 0
-		finding := fmt.Sprintf("Timed %s probe in %dms.", q.Dimension, duration)
-		if score < 0.6 {
-			status = "warning"
-			severity = 1
-			finding = "Agent response may have drifted on " + q.Dimension + ": missing " + strings.Join(missing, ", ")
-		}
-		if duration > 60000 {
-			status = "warning"
-			severity = 1
-			finding = fmt.Sprintf("Agent response was slow for %s: %dms.", q.Dimension, duration)
-		}
-		metrics := map[string]float64{
-			"duration_ms": float64(duration),
-		}
-		if result.TokenStatus == "fresh" && result.InputTokens != nil {
-			metrics["input_tokens"] = float64(*result.InputTokens)
-		}
-		if result.TokenStatus == "fresh" && result.OutputTokens != nil {
-			metrics["output_tokens"] = float64(*result.OutputTokens)
-		}
-		if result.TokenStatus == "fresh" && result.TotalTokens != nil {
-			metrics["total_tokens"] = float64(*result.TotalTokens)
-		}
-		s.observe("question."+q.PackID+"."+q.ID+".answer_hash", scrubbed, displayHash(scrubbed))
-		s.addCheck("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, status, severity, score*100, start, finding, metrics)
+	outcomes := s.runQuestionProbes(questions)
+	for _, outcome := range outcomes {
+		s.recordQuestionOutcome(outcome)
 	}
+}
+
+type questionProbeOutcome struct {
+	Index    int
+	Question Question
+	Started  time.Time
+	Result   AgentProbeResult
+	Err      error
+}
+
+func (s *runState) runQuestionProbes(questions []Question) []questionProbeOutcome {
+	if len(questions) == 0 {
+		return nil
+	}
+	concurrency := probeConcurrency(len(questions))
+	jobs := make(chan questionProbeOutcome)
+	results := make(chan questionProbeOutcome, len(questions))
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				job.Started = time.Now()
+				job.Result, job.Err = s.askAgentMeasured(job.Question)
+				results <- job
+			}
+		}()
+	}
+	for i, q := range questions {
+		jobs <- questionProbeOutcome{Index: i, Question: q}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+	outcomes := make([]questionProbeOutcome, len(questions))
+	for outcome := range results {
+		outcomes[outcome.Index] = outcome
+	}
+	return outcomes
+}
+
+func probeConcurrency(questionCount int) int {
+	value := 2
+	if configured := strings.TrimSpace(os.Getenv("BASELINE_PROBE_CONCURRENCY")); configured != "" {
+		if parsed, err := strconv.Atoi(configured); err == nil {
+			value = parsed
+		}
+	}
+	if value < 1 {
+		value = 1
+	}
+	if value > 6 {
+		value = 6
+	}
+	if questionCount > 0 && value > questionCount {
+		return questionCount
+	}
+	return value
+}
+
+func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
+	q := outcome.Question
+	result := outcome.Result
+	start := outcome.Started
+	duration := time.Since(start).Milliseconds()
+	if !result.SystemSendAt.IsZero() && !result.BaselineReceivedAt.IsZero() {
+		duration = result.DurationMS
+		result.ProbeMessage.PackVersion = packVersionFor(s.cfg, q.PackID)
+		result.ProbeMessage.QuestionSetVersion = questionSetVersion
+		result.ProbeMessage.PromptHash = hashValue(q.Prompt)
+		result.ProbeMessage.ExpectedFactsHash = hashStringSlice(q.ExpectedFacts)
+		s.probes = append(s.probes, result.ProbeMessage)
+		s.observe("question."+q.PackID+"."+q.ID+".system_send_at", result.SystemSendAt.Format(time.RFC3339Nano), result.SystemSendAt.Format(time.RFC3339Nano))
+		s.observe("question."+q.PackID+"."+q.ID+".baseline_received_at", result.BaselineReceivedAt.Format(time.RFC3339Nano), result.BaselineReceivedAt.Format(time.RFC3339Nano))
+		s.observeNumber("question."+q.PackID+"."+q.ID+".duration_ms", float64(result.DurationMS))
+		if result.TokenStatus == "fresh" && result.TotalTokens != nil {
+			s.observeNumber("question."+q.PackID+"."+q.ID+".total_tokens", float64(*result.TotalTokens))
+		}
+		s.observe("question."+q.PackID+"."+q.ID+".token_status", result.TokenStatus, result.TokenStatus)
+	} else {
+		s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
+	}
+	if outcome.Err != nil {
+		s.addCheckWithDuration("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, "critical", 2, 0, duration, "Agent question failed: "+outcome.Err.Error(), map[string]float64{"duration_ms": float64(duration)})
+		return
+	}
+	scrubbed, report := scrubText(result.Output)
+	s.redactions += report.SecretsFound + report.PIIFound
+	score, missing := scoreQuestion(scrubbed, q)
+	status := "ok"
+	severity := 0
+	finding := fmt.Sprintf("Timed %s probe in %dms.", q.Dimension, duration)
+	if score < 0.6 {
+		status = "warning"
+		severity = 1
+		finding = "Agent response may have drifted on " + q.Dimension + ": missing " + strings.Join(missing, ", ")
+	}
+	if duration > 60000 {
+		status = "warning"
+		severity = 1
+		finding = fmt.Sprintf("Agent response was slow for %s: %dms.", q.Dimension, duration)
+	}
+	metrics := map[string]float64{
+		"duration_ms": float64(duration),
+	}
+	if result.TokenStatus == "fresh" && result.InputTokens != nil {
+		metrics["input_tokens"] = float64(*result.InputTokens)
+	}
+	if result.TokenStatus == "fresh" && result.OutputTokens != nil {
+		metrics["output_tokens"] = float64(*result.OutputTokens)
+	}
+	if result.TokenStatus == "fresh" && result.TotalTokens != nil {
+		metrics["total_tokens"] = float64(*result.TotalTokens)
+	}
+	s.observe("question."+q.PackID+"."+q.ID+".answer_hash", scrubbed, displayHash(scrubbed))
+	s.addCheckWithDuration("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, status, severity, score*100, duration, finding, metrics)
 }
 
 type AgentProbeResult struct {

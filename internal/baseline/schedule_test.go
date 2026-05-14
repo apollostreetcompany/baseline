@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,5 +65,25 @@ func TestNextRunAt(t *testing.T) {
 	next := nextRunAt(now, 9, 30)
 	if next.Day() != 15 || next.Hour() != 9 || next.Minute() != 30 {
 		t.Fatalf("unexpected next run: %s", next)
+	}
+}
+
+func TestScheduledRunIsFastOnlyAndDoesNotExecuteAgent(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	marker := filepath.Join(t.TempDir(), "agent-ran")
+	cfg := defaultConfig()
+	cfg.AgentCommand = "touch " + marker
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	result, err := runScheduledBaseline(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Action != "run" || result.RunID == "" {
+		t.Fatalf("unexpected schedule result: %+v", result)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("scheduled daily run must stay fast/local and not execute the configured agent")
 	}
 }

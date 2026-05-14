@@ -3,6 +3,7 @@ package baseline
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,14 +11,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type BootstrapPreview struct {
+	PreviewID  string        `json:"preview_id,omitempty"`
+	CreatedAt  string        `json:"created_at,omitempty"`
 	ConfigPath string        `json:"config_path"`
 	ScopeKey   string        `json:"scope_key"`
 	ConfigHash string        `json:"config_hash"`
 	Packs      []MonitorPack `json:"packs"`
 	Questions  []Question    `json:"questions"`
+	Next       string        `json:"next,omitempty"`
 }
 
 type BootstrapStatus struct {
@@ -161,7 +166,12 @@ func cmdBootstrapPreview(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	return writeJSON(stdout, stderr, bootstrapPreview(cfg))
+	preview, err := createBootstrapPreview(cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return writeJSON(stdout, stderr, preview)
 }
 
 func cmdBootstrapRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -171,15 +181,11 @@ func cmdBootstrapRun(ctx context.Context, args []string, stdout, stderr io.Write
 	notes := fs.String("notes", "", "candidate notes")
 	agentCommand := fs.String("agent-command", "", "test-only/custom agent command; prompt is BASELINE_PROMPT")
 	packs := fs.String("packs", "baseline", "question packs to run: baseline, enabled, all, or comma-separated pack ids")
+	previewID := fs.String("preview-id", "", "optional preview id from baseline bootstrap preview")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: "bootstrap", RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -190,6 +196,15 @@ func cmdBootstrapRun(ctx context.Context, args []string, stdout, stderr io.Write
 		return 1
 	}
 	defer db.Close()
+	if err := requireBootstrapPreview(db, scopeKeyForWorkspace(currentWorkspace()), configHash(cfg), *previewID); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	run, err := RunBaseline(ctx, RunOptions{Mode: "bootstrap", RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	candidate, err := createBootstrapCandidate(db, run.ID, *label, *notes, scopeKeyForWorkspace(run.Workspace), configHash(cfg))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -409,6 +424,58 @@ func bootstrapPreview(cfg Config) BootstrapPreview {
 		Packs:      packs,
 		Questions:  questions,
 	}
+}
+
+func createBootstrapPreview(cfg Config) (BootstrapPreview, error) {
+	preview := bootstrapPreview(cfg)
+	preview.PreviewID = "preview_" + newRunID()
+	preview.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	preview.Next = "Review the questions, then run baseline bootstrap run --preview-id " + preview.PreviewID
+	db, err := openDB()
+	if err != nil {
+		return BootstrapPreview{}, err
+	}
+	defer db.Close()
+	details, _ := json.Marshal(map[string]any{
+		"question_set_version": questionSetVersion,
+		"question_count":       len(preview.Questions),
+	})
+	_, err = db.Exec(`INSERT INTO consent_events (action, run_id, scope_key, config_hash, details_json, created_at)
+		VALUES ('bootstrap.preview', ?, ?, ?, ?, ?)`, preview.PreviewID, preview.ScopeKey, preview.ConfigHash, string(details), preview.CreatedAt)
+	if err != nil {
+		return BootstrapPreview{}, err
+	}
+	return preview, nil
+}
+
+func requireBootstrapPreview(db *sql.DB, scopeKey, cfgHash, previewID string) error {
+	cutoff := time.Now().Add(-2 * time.Hour)
+	query := `SELECT created_at FROM consent_events
+		WHERE action = 'bootstrap.preview' AND scope_key = ? AND config_hash = ?
+		ORDER BY created_at DESC LIMIT 1`
+	args := []any{scopeKey, cfgHash}
+	if strings.TrimSpace(previewID) != "" {
+		query = `SELECT created_at FROM consent_events
+			WHERE action = 'bootstrap.preview' AND run_id = ? AND scope_key = ? AND config_hash = ?
+			ORDER BY created_at DESC LIMIT 1`
+		args = []any{previewID, scopeKey, cfgHash}
+	}
+	var created string
+	err := db.QueryRow(query, args...).Scan(&created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("preview required before sending agent probes; run baseline bootstrap preview, review the question set, then run baseline bootstrap run")
+	}
+	if err != nil {
+		return err
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, created)
+	if err != nil {
+		return fmt.Errorf("stored bootstrap preview timestamp is invalid; run baseline bootstrap preview again")
+	}
+	if createdAt.Before(cutoff) {
+		return fmt.Errorf("bootstrap preview expired; run baseline bootstrap preview again before sending agent probes")
+	}
+	return nil
 }
 
 func acceptCandidateOrRun(runID, label, notes string, slot int, requireCandidate bool) (GoodBaseline, error) {

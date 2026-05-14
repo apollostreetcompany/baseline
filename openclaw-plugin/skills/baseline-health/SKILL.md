@@ -7,7 +7,7 @@ check, Good Baseline acceptance, or drift comparison through Baseline.
 
 1. Bootstrap first with the CLI: `baseline bootstrap --openclaw`.
 2. Run `baseline_check` in `fast` mode for a local-only health check.
-3. For real OpenClaw behavior metrics, run `baseline bootstrap run` or `baseline check --full --run-agent --packs baseline`; Baseline sends real OpenClaw messages and records send/receive timestamps. The default bootstrap run is the 14-question Baseline Core pack.
+3. For real OpenClaw behavior metrics, run `baseline bootstrap preview` before `baseline bootstrap run`, or run `baseline check --full --run-agent --packs baseline`; Baseline sends real OpenClaw messages and records send/receive timestamps. The default bootstrap run is the 14-question Baseline Core pack.
 4. Accept a Good Baseline only after the user explicitly approves the run: `baseline bootstrap accept [RUN_ID] --label <label>`.
 5. Keep at most three active Good Baselines. If the user wants a fourth, ask which slot to replace.
 6. Later, run `baseline_compare` to inspect drift from the latest accepted Good Baseline.

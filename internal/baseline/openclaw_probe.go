@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -14,10 +15,28 @@ func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Questio
 	sessionID := "baseline-" + runID + "-" + q.PackID + "-" + q.ID
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, openclawPath, "agent", "--json", "--session-id", sessionID, "--message", q.Prompt)
+	cmd := exec.CommandContext(ctx, openclawPath, "agent", "--json", "--session-id", sessionID, "--message", q.Prompt, "--timeout", "90")
+	stdoutFile, stdoutErr := os.CreateTemp("", "baseline-openclaw-stdout-*")
+	if stdoutErr != nil {
+		return AgentProbeResult{}, stdoutErr
+	}
+	defer os.Remove(stdoutFile.Name())
+	defer stdoutFile.Close()
+	stderrFile, stderrErr := os.CreateTemp("", "baseline-openclaw-stderr-*")
+	if stderrErr != nil {
+		return AgentProbeResult{}, stderrErr
+	}
+	defer os.Remove(stderrFile.Name())
+	defer stderrFile.Close()
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
 	systemSendAt := time.Now().UTC()
-	out, err := cmd.CombinedOutput()
+	err := cmd.Run()
 	baselineReceivedAt := time.Now().UTC()
+	_ = stdoutFile.Sync()
+	_ = stderrFile.Sync()
+	out, _ := os.ReadFile(stdoutFile.Name())
+	errOut, _ := os.ReadFile(stderrFile.Name())
 	output := extractAgentText(out)
 	meta := OpenClawTokenMetadata{TokenStatus: "unavailable"}
 	if ctx.Err() == nil {
@@ -44,7 +63,11 @@ func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Questio
 		return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("openclaw agent timed out")
 	}
 	if err != nil {
-		return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("openclaw agent failed: %w: %s", err, strings.TrimSpace(string(out)))
+		detail := strings.TrimSpace(string(errOut))
+		if detail == "" {
+			detail = strings.TrimSpace(string(out))
+		}
+		return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("openclaw agent failed: %w: %s", err, detail)
 	}
 	return AgentProbeResult{Output: output, ProbeMessage: msg}, nil
 }
@@ -147,11 +170,13 @@ func tokenFreshness(session map[string]any, sentAt, receivedAt time.Time) string
 	}
 	if ts := firstString(session, "updatedAt", "updated_at", "lastUpdatedAt", "last_updated_at", "createdAt", "created_at"); ts != "" {
 		parsed, err := time.Parse(time.RFC3339Nano, ts)
-		if err == nil {
-			if parsed.Before(sentAt.Add(-5*time.Second)) || parsed.After(receivedAt.Add(30*time.Second)) {
-				return "stale"
-			}
+		if err != nil {
+			return "stale"
 		}
+		if parsed.Before(sentAt.Add(-5*time.Second)) || parsed.After(receivedAt.Add(30*time.Second)) {
+			return "stale"
+		}
+		return "fresh"
 	}
 	return "stale"
 }

@@ -37,7 +37,7 @@ baseline compare
 ```
 
 Use `baseline check --fast` for local runtime/repo/MCP checks when you do not want to send OpenClaw probe messages. Fast mode never runs the agent.
-`baseline bootstrap run` defaults to the 14-question Baseline Core pack; use `--packs enabled` or `--packs all` after reviewing the preview.
+`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Use `--packs enabled` or `--packs all` only after reviewing the wider preview. The full v0.1 pack list is in [docs/QUESTION_SET.md](docs/QUESTION_SET.md).
 
 ## Bootstrap Lifecycle
 
@@ -128,6 +128,8 @@ Manual MCP smoke test:
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./bin/baseline serve mcp
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_schedule","arguments":{"action":"run"}}}' | ./bin/baseline serve mcp
 ```
+
+For MCP bootstrap runs, call `baseline_bootstrap` with `action:"preview"` before `action:"run"`. The optional `preview_id` argument pins the run to a specific preview receipt.
 
 ## Daily Schedule
 

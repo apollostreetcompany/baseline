@@ -101,4 +101,4 @@ baseline bootstrap run
 baseline bootstrap accept --label clean-local
 ```
 
-This path must use real OpenClaw message timing and token metadata when OpenClaw exposes it. The default bootstrap run is the 14-question Baseline Core pack; wider packs require `--packs enabled` or `--packs all`. Missing session usage should be reported as unavailable, not estimated.
+This path must use real OpenClaw message timing and token metadata when OpenClaw exposes it. `baseline bootstrap run` requires a recent preview receipt and defaults to the 14-question Baseline Core pack; wider packs require `--packs enabled` or `--packs all` after preview. Missing session usage should be reported as unavailable, not estimated.

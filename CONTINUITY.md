@@ -21,7 +21,9 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Personality drift can be scored as behavior drift: verbosity, warmth, directness, sycophancy, pushback, substance consistency, and user-style adherence.
 - Go was selected for the CLI/MCP binary and Cloudflare Workers + Neon for the launch surface.
 - MCP is intentionally limited to seven legible tools.
-- The first dogfood path is: `baseline check`, `baseline known-good mark`, `baseline compare`, `baseline install openclaw`, redacted cloud sync.
+- The first dogfood path is: `baseline bootstrap --openclaw`, `baseline bootstrap preview`, `baseline bootstrap run`, explicit Good Baseline accept, `baseline compare`, redacted cloud sync.
+- Bootstrap agent probes require a recent preview receipt before messages are sent.
+- Baseline Core OpenClaw probes run with bounded concurrency and store actual per-probe send/receive durations, not recorder lag.
 - Attached recipe-style `.prose.md` files are legacy frontmatter workflows without `kind:`; they now have compatibility run receipts under `.prose/runs/`.
 
 ## State
@@ -39,10 +41,12 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 11: Added pnpm/npm wrapper package, OpenClaw plugin bundle, and Go release path
 - [x] Bead 12: Deployed Worker and verified local run sync renders on dashboard APIs
 - [x] Bead 13: Added daily launchd self-check schedule and OpenClaw-triggerable `baseline_schedule` MCP tool
-- [x] Bead 14: Launched v0.1 bootstrap/Good Baseline flow with updated 14-question Baseline Core, scoped Good Baseline slots, real OpenClaw send/receive timing, fresh-only token metadata, OpenClaw-style config CLI, updated MCP tools, local binary install, and deployed Worker docs/question set
+- [x] Bead 14: Launched and hardened v0.1 bootstrap/Good Baseline flow with updated 14-question Baseline Core, preview-before-run receipts, scoped Good Baseline slots, bounded real OpenClaw send/receive timing, fresh-only token metadata, OpenClaw-style config CLI, updated MCP tools, local binary install, and deployed Worker docs/question set
 
 ### Now
-- Bead 14 complete. `/opt/homebrew/bin/baseline` is updated, OpenClaw plugin still loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
+- Bead 14 launch hardening complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
+- Final real OpenClaw smoke candidate: `run_diiaznd9cfao`, warning score 76, 14 Baseline Core probes, wall-clock 222190ms. Per-probe durations now match stored metrics; token counts were fresh for 12/14 probes and stale/unexported for `tools` and `ops_change`.
+- `baseline schedule run` passed locally as fast-only: `run_diib2ooub0rc`, status ok, score 100, cloud_synced true.
 
 ### Next
 - Bead 15: Split dogfood admin token from ingest token before external pilot.
@@ -54,7 +58,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - What separate admin token should replace the temporary dogfood reuse of the sync token?
 - Which OpenAI evaluator key/model should be used for paid pilot evaluation?
 - Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
-- Should `baseline check --full --run-agent` be dogfooded now, or kept manual until prompt cost/runtime behavior is reviewed?
+- Whether the two stale-token OpenClaw probes (`tools`, `ops_change`) are OpenClaw session freshness limitations or prompt/runtime issues to tune.
 - Should token issuance be self-serve in the dashboard or manual for the first ten users?
 - Should the recipe library be migrated in place to OpenProse 0.13.1 contract frontmatter, or should compatibility mode remain supported for older `.prose.md` recipes?
 

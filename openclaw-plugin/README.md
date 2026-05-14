@@ -30,7 +30,7 @@ baseline bootstrap accept --label clean-local
 ```
 
 Then run `baseline compare` any time you want to check drift against the accepted Good Baselines. Use `baseline check --fast` when you only want local checks and do not want to send OpenClaw probe messages.
-`baseline bootstrap run` defaults to the 14-question Baseline Core pack; run `baseline bootstrap run --packs enabled` only after reviewing the wider pack preview.
+`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Run `baseline bootstrap run --packs enabled` only after reviewing the wider pack preview.
 
 Manual MCP registry fallback:
 

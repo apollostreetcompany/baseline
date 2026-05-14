@@ -153,6 +153,11 @@ func TestBootstrapRunWithAgentCommandCreatesCandidate(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	t.Setenv("BASELINE_RUN_AGENT", "1")
 	var out, errOut bytes.Buffer
+	if code := cmdBootstrap(context.Background(), []string{"preview"}, &out, &errOut); code != 0 {
+		t.Fatalf("bootstrap preview failed: code=%d stderr=%s", code, errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
 	code := cmdBootstrap(context.Background(), []string{"run", "--agent-command", "printf baseline"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("bootstrap run failed: code=%d stderr=%s stdout=%s", code, errOut.String(), out.String())
@@ -166,5 +171,25 @@ func TestBootstrapRunWithAgentCommandCreatesCandidate(t *testing.T) {
 	}
 	if status.LatestCandidate == nil || !status.NeedsBootstrap {
 		t.Fatalf("candidate should exist but not be accepted yet: %+v", status)
+	}
+}
+
+func TestBootstrapRunRequiresPreviewBeforeAgentProbes(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	t.Setenv("BASELINE_RUN_AGENT", "1")
+	var out, errOut bytes.Buffer
+	code := cmdBootstrap(context.Background(), []string{"run", "--agent-command", "printf baseline"}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("bootstrap run should require preview before sending probes: %s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "preview required") {
+		t.Fatalf("expected preview requirement, got stderr=%s stdout=%s", errOut.String(), out.String())
+	}
+	status, err := currentBootstrapStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestCandidate != nil {
+		t.Fatalf("run without preview must not create candidate: %+v", status)
 	}
 }

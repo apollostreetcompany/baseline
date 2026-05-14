@@ -26,7 +26,7 @@ baseline compare
 ```
 
 Use `baseline check --fast` when you only want local runtime/repo/MCP checks and do not want to send OpenClaw probe messages.
-`baseline bootstrap run` defaults to the 14-question Baseline Core pack; use `--packs enabled` or `--packs all` after previewing the wider packs.
+`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Use `--packs enabled` or `--packs all` only after previewing the wider packs.
 
 For local development from this repository:
 

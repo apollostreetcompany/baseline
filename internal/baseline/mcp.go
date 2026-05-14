@@ -99,13 +99,14 @@ func mcpTools() []map[string]any {
 			"name":        "baseline_bootstrap",
 			"description": "Run bootstrap lifecycle actions: status, defaults, preview, run, accept, or reject. Accept requires explicit action.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
-				"action":  stringProp("status, defaults, preview, run, accept, or reject"),
-				"run_id":  stringProp("run id for accept/reject"),
-				"label":   stringProp("candidate or Good Baseline label"),
-				"notes":   stringProp("operator notes"),
-				"slot":    stringProp("Good Baseline slot: auto, 1, 2, or 3"),
-				"confirm": stringProp("required for accept: accept <run_id>"),
-				"packs":   stringProp("run action only: baseline, enabled, all, or comma-separated pack ids"),
+				"action":     stringProp("status, defaults, preview, run, accept, or reject"),
+				"run_id":     stringProp("run id for accept/reject"),
+				"label":      stringProp("candidate or Good Baseline label"),
+				"notes":      stringProp("operator notes"),
+				"slot":       stringProp("Good Baseline slot: auto, 1, 2, or 3"),
+				"confirm":    stringProp("required for accept: accept <run_id>"),
+				"packs":      stringProp("run action only: baseline, enabled, all, or comma-separated pack ids"),
+				"preview_id": stringProp("optional preview id returned by action=preview before action=run"),
 			}},
 		},
 		{
@@ -221,23 +222,29 @@ func mcpBootstrap(args map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return bootstrapPreview(cfg), nil
+		return createBootstrapPreview(cfg)
 	case "run":
 		cfg, err := loadConfig()
 		if err != nil {
+			return nil, err
+		}
+		db, err := openDB()
+		if err != nil {
+			return nil, err
+		}
+		defer db.Close()
+		if err := requireBootstrapPreview(db, scopeKeyForWorkspace(currentWorkspace()), configHash(cfg), stringArg(args, "preview_id", "")); err != nil {
 			return nil, err
 		}
 		run, err := RunBaseline(context.Background(), RunOptions{Mode: "bootstrap", RunAgent: true, Packs: stringArg(args, "packs", "baseline")})
 		if err != nil {
 			return nil, err
 		}
-		return withDB(func(db *sql.DB) (any, error) {
-			candidate, err := createBootstrapCandidate(db, run.ID, stringArg(args, "label", "Baseline candidate"), stringArg(args, "notes", ""), scopeKeyForWorkspace(run.Workspace), configHash(cfg))
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"candidate": candidate, "run": run}, nil
-		})
+		candidate, err := createBootstrapCandidate(db, run.ID, stringArg(args, "label", "Baseline candidate"), stringArg(args, "notes", ""), scopeKeyForWorkspace(run.Workspace), configHash(cfg))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"candidate": candidate, "run": run}, nil
 	case "accept":
 		runID := stringArg(args, "run_id", "")
 		if err := requireMCPConfirmation("accept", runID, 0, stringArg(args, "confirm", "")); err != nil {

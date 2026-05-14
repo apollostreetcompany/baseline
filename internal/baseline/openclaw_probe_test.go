@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunOpenClawProbeCapturesSystemTimestampsAndFreshTokens(t *testing.T) {
@@ -88,5 +89,27 @@ exit 1
 	}
 	if result.TotalTokens != nil || result.InputTokens != nil || result.OutputTokens != nil {
 		t.Fatalf("stale token counts must not be retained, got %+v", result.ProbeMessage)
+	}
+}
+
+func TestTokenFreshnessUsesInWindowTimestamps(t *testing.T) {
+	sentAt := time.Now().UTC()
+	receivedAt := sentAt.Add(2 * time.Second)
+	status := tokenFreshness(map[string]any{
+		"updatedAt": sentAt.Add(500 * time.Millisecond).Format(time.RFC3339Nano),
+	}, sentAt, receivedAt)
+	if status != "fresh" {
+		t.Fatalf("expected in-window timestamp to be fresh, got %s", status)
+	}
+}
+
+func TestTokenFreshnessRejectsOutOfWindowTimestamps(t *testing.T) {
+	sentAt := time.Now().UTC()
+	receivedAt := sentAt.Add(2 * time.Second)
+	status := tokenFreshness(map[string]any{
+		"updatedAt": sentAt.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+	}, sentAt, receivedAt)
+	if status != "stale" {
+		t.Fatalf("expected old timestamp to be stale, got %s", status)
 	}
 }
