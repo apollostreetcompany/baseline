@@ -89,4 +89,4 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | bas
 
 The MCP response should include `baseline_check`, `baseline_latest`,
 `baseline_report`, `baseline_compare`, `baseline_mark_known_good`,
-`baseline_config`, and `baseline_scrub_preview`.
+`baseline_schedule`, and `baseline_scrub_preview`.

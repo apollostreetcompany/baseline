@@ -116,9 +116,9 @@ func mcpTools() []map[string]any {
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"run_id": stringProp("optional run id"), "label": stringProp("label")}},
 		},
 		{
-			"name":        "baseline_config",
-			"description": "Read or update simple Baseline toggles: cloud sync, packs, and API URL. Does not expose API tokens.",
-			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"cloud_sync": boolProp("optional cloud sync state"), "api_base_url": stringProp("optional API base URL")}},
+			"name":        "baseline_schedule",
+			"description": "Install, remove, inspect, or trigger the daily local Baseline self-check. The run action performs a fast check and sync push.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"action": stringProp("status, install, remove, or run"), "at": stringProp("daily local time for install, HH:MM")}},
 		},
 		{
 			"name":        "baseline_scrub_preview",
@@ -150,6 +150,8 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 		})
 	case "baseline_mark_known_good":
 		payload, err = mcpMarkKnownGood(stringArg(args, "run_id", ""), stringArg(args, "label", "known-good"))
+	case "baseline_schedule":
+		payload, err = mcpSchedule(args)
 	case "baseline_config":
 		payload, err = mcpConfig(args)
 	case "baseline_scrub_preview":
@@ -163,6 +165,22 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 	}
 	b, _ := json.MarshalIndent(payload, "", "  ")
 	return map[string]any{"content": []map[string]string{{"type": "text", "text": string(b)}}}, nil
+}
+
+func mcpSchedule(args map[string]any) (any, error) {
+	action := stringArg(args, "action", "status")
+	switch action {
+	case "status":
+		return scheduleStatus()
+	case "install":
+		return installSchedule("", stringArg(args, "at", "09:00"))
+	case "remove":
+		return removeSchedule()
+	case "run":
+		return runScheduledBaseline(context.Background())
+	default:
+		return nil, fmt.Errorf("unknown schedule action %s", action)
+	}
 }
 
 func mcpReport(runID string) (any, error) {

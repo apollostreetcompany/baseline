@@ -665,7 +665,7 @@ openclaw mcp list
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
       <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: check, latest, report, compare, mark known-good, config, and scrub preview. Fast checks are local-only. Full checks execute the agent only with explicit opt-in.</p>
+      <p>Baseline exposes seven legible MCP tools: check, latest, report, compare, mark known-good, schedule, and scrub preview. Fast checks are local-only. Full checks execute the agent only with explicit opt-in.</p>
       <pre><code>${escapeHTML(install)}</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN

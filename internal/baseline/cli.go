@@ -44,6 +44,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 2
 	case "sync":
 		return cmdSync(args[1:], stdout, stderr)
+	case "schedule":
+		return cmdSchedule(ctx, args[1:], stdout, stderr)
 	case "scrub":
 		return cmdScrub(args[1:], stdout, stderr)
 	case "doctor":
@@ -72,6 +74,7 @@ Usage:
   baseline install openclaw
   baseline serve mcp
   baseline sync status|on|off|push [--token TOKEN] [--url URL]
+  baseline schedule install|status|run|remove [--at HH:MM]
   baseline scrub preview <text>
 
 Safety defaults:
@@ -79,6 +82,53 @@ Safety defaults:
   - Full question probes do not execute an agent unless --run-agent or BASELINE_RUN_AGENT=1 is set.
   - Cloud export stores redacted summaries by default.
 `)
+}
+
+func cmdSchedule(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "usage: baseline schedule install|status|run|remove [--at HH:MM]")
+		return 2
+	}
+	switch args[0] {
+	case "install":
+		fs := flag.NewFlagSet("schedule install", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+		at := fs.String("at", "09:00", "daily local time in HH:MM")
+		exe := fs.String("exe", "", "baseline executable path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		status, err := installSchedule(*exe, *at)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, status)
+	case "status":
+		status, err := scheduleStatus()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, status)
+	case "run":
+		result, err := runScheduledBaseline(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, result)
+	case "remove":
+		status, err := removeSchedule()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, status)
+	default:
+		fmt.Fprintln(stderr, "usage: baseline schedule install|status|run|remove [--at HH:MM]")
+		return 2
+	}
 }
 
 func cmdInit(args []string, stdout, stderr io.Writer) int {

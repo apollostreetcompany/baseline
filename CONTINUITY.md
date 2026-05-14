@@ -38,13 +38,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 10: Added admin/versioned canonical question sets and LLM evaluator endpoint
 - [x] Bead 11: Added pnpm/npm wrapper package, OpenClaw plugin bundle, and Go release path
 - [x] Bead 12: Deployed Worker and verified local run sync renders on dashboard APIs
+- [x] Bead 13: Added daily launchd self-check schedule and OpenClaw-triggerable `baseline_schedule` MCP tool
 
 ### Now
-- Bead 12 complete. Worker version `b143ba10-4546-4d89-8ae5-3c5d920ec326` is deployed, local run `run_dii09roqdp20` synced, dashboard APIs render it, and admin evaluation `99161224-a275-48b6-b7a1-489b9f73a916` was stored with the heuristic evaluator.
+- Bead 13 complete. Daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time, and OpenClaw can trigger `baseline_schedule` with `action: run`; smoke run `run_dii2iaoed2xk` returned score `90` and `cloud_synced:true`.
 
 ### Next
-- Bead 13: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Bead 14: Split dogfood admin token from ingest token before external pilot.
+- Bead 15: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions

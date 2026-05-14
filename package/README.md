@@ -26,6 +26,7 @@ BASELINE_BIN="$PWD/bin/baseline" pnpm --dir package exec baseline check --fast
 ```sh
 baseline init --register-openclaw
 openclaw mcp set baseline '{"command":"baseline","args":["serve","mcp"]}'
+baseline schedule install --at 09:00
 ```
 
 Fast mode never executes the local agent. Full mode only executes an agent when

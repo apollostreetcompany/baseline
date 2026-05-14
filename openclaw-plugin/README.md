@@ -23,3 +23,25 @@ Manual MCP registry fallback:
 ```sh
 openclaw mcp set baseline '{"command":"baseline","args":["serve","mcp"]}'
 ```
+
+## Daily Self-Check
+
+From OpenClaw, ask the Baseline plugin to call:
+
+```json
+{"name":"baseline_schedule","arguments":{"action":"install","at":"09:00"}}
+```
+
+Then verify:
+
+```json
+{"name":"baseline_schedule","arguments":{"action":"status"}}
+```
+
+Manual CLI equivalent:
+
+```sh
+baseline schedule install --at 09:00
+baseline schedule status
+baseline schedule run
+```

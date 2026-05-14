@@ -44,6 +44,9 @@ This machine is already configured with:
 ./bin/baseline compare
 ./bin/baseline sync status
 ./bin/baseline sync push
+./bin/baseline schedule install --at 09:00
+./bin/baseline schedule status
+./bin/baseline schedule run
 ```
 
 Fast mode never runs the agent. Full mode includes the 12-question baseline pack but skips execution until `--run-agent` or `BASELINE_RUN_AGENT=1` is set.
@@ -57,13 +60,24 @@ The MCP server exposes seven tools:
 - `baseline_report`
 - `baseline_compare`
 - `baseline_mark_known_good`
-- `baseline_config`
+- `baseline_schedule`
 - `baseline_scrub_preview`
 
 Manual MCP smoke test:
 
 ```sh
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./bin/baseline serve mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_schedule","arguments":{"action":"run"}}}' | ./bin/baseline serve mcp
+```
+
+## Daily Schedule
+
+On macOS, Baseline installs a user LaunchAgent at `~/Library/LaunchAgents/ai.baseline.daily.plist`. The scheduled job runs `baseline schedule run`, which performs a fast local check and syncs queued redacted payloads when cloud sync is enabled.
+
+```sh
+baseline schedule install --at 09:00
+baseline schedule status
+baseline schedule run
 ```
 
 ## Safety

@@ -7,6 +7,13 @@
 - Version ID: `b143ba10-4546-4d89-8ae5-3c5d920ec326`
 - Commit deployed: `73346f7 feat(bead-11): add distribution packages`
 
+## 2026-05-14 MCP Schedule Docs Deploy
+
+- Worker: `baseline-ai`
+- URL: https://baseline-ai.ryan-borker.workers.dev
+- Version ID: `3999eaaf-d845-487f-a6a7-beaf41027773`
+- Change: MCP docs now refer to `baseline_schedule` instead of the hidden legacy config tool.
+
 Configured Worker secrets:
 
 - `DATABASE_URL`
@@ -43,3 +50,25 @@ Results:
 ## Admin Access
 
 For dogfood, `BASELINE_ADMIN_TOKEN` is currently set to the same local token used by `baseline sync on`. This keeps the page usable without introducing another secret file, but it should be split before any external pilot.
+
+## Local Daily Schedule
+
+Baseline is installed on this machine as a launchd user agent:
+
+- Label: `ai.baseline.daily`
+- Plist: `~/Library/LaunchAgents/ai.baseline.daily.plist`
+- Time: `09:00` local
+- Program: `/opt/homebrew/bin/baseline schedule run`
+
+OpenClaw can trigger the same path through MCP:
+
+```json
+{"name":"baseline_schedule","arguments":{"action":"run"}}
+```
+
+Smoke result:
+
+- Run: `run_dii2iaoed2xk`
+- Score: `90`
+- Status: `warning`
+- Cloud synced: `true`
