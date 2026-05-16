@@ -92,6 +92,68 @@ exit 1
 	}
 }
 
+func TestOpenClawProbeSessionIDStaysWithinProviderLimit(t *testing.T) {
+	q := Question{PackID: "personality_identity", ID: "broad_idea_warning"}
+	sessionID := openClawProbeSessionID("run_diitfaegybzc", q)
+	if len(sessionID) > 64 {
+		t.Fatalf("session id must stay within provider cache key limit, got %d: %s", len(sessionID), sessionID)
+	}
+	if !strings.HasPrefix(sessionID, "baseline-run_diitfaegybzc-") {
+		t.Fatalf("expected readable baseline prefix, got %s", sessionID)
+	}
+	if sessionID != openClawProbeSessionID("run_diitfaegybzc", q) {
+		t.Fatalf("session id must be deterministic")
+	}
+}
+
+func TestRunOpenClawProbeHonorsOpenClawEnvOverrides(t *testing.T) {
+	t.Setenv("BASELINE_OPENCLAW_MODEL", "openai/gpt-5.5")
+	t.Setenv("BASELINE_OPENCLAW_THINKING", "low")
+	t.Setenv("BASELINE_OPENCLAW_AGENT_TIMEOUT_SECONDS", "45")
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args.txt")
+	t.Setenv("BASELINE_TEST_ARGS_FILE", argsFile)
+	script := filepath.Join(dir, "openclaw")
+	scriptBody := `#!/bin/sh
+if [ "$1" = "agent" ]; then
+  printf '%s\n' "$@" > "$BASELINE_TEST_ARGS_FILE"
+  echo '{"response":"baseline"}'
+  exit 0
+fi
+if [ "$1" = "sessions" ]; then
+  echo '[]'
+  exit 0
+fi
+echo "unexpected command: $*" >&2
+exit 1
+`
+	if err := os.WriteFile(script, []byte(scriptBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runOpenClawProbe(context.Background(), script, "run_env", Question{
+		PackID: "baseline",
+		ID:     "variance_1",
+		Prompt: "Answer only the word: baseline.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	argsBytes, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := "\n" + string(argsBytes)
+	for _, want := range []string{
+		"\n--model\nopenai/gpt-5.5\n",
+		"\n--thinking\nlow\n",
+		"\n--timeout\n45\n",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("expected args to contain %q, got:\n%s", want, args)
+		}
+	}
+}
+
 func TestTokenFreshnessUsesInWindowTimestamps(t *testing.T) {
 	sentAt := time.Now().UTC()
 	receivedAt := sentAt.Add(2 * time.Second)

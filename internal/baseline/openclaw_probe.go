@@ -12,10 +12,18 @@ import (
 )
 
 func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Question) (AgentProbeResult, error) {
-	sessionID := "baseline-" + runID + "-" + q.PackID + "-" + q.ID
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	sessionID := openClawProbeSessionID(runID, q)
+	agentTimeout := openClawAgentTimeoutSeconds()
+	args := []string{"agent", "--json", "--session-id", sessionID, "--message", q.Prompt, "--timeout", strconv.Itoa(agentTimeout)}
+	if model := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_MODEL")); model != "" {
+		args = append(args, "--model", model)
+	}
+	if thinking := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_THINKING")); thinking != "" {
+		args = append(args, "--thinking", thinking)
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(agentTimeout+30)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, openclawPath, "agent", "--json", "--session-id", sessionID, "--message", q.Prompt, "--timeout", "90")
+	cmd := exec.CommandContext(ctx, openclawPath, args...)
 	stdoutFile, stdoutErr := os.CreateTemp("", "baseline-openclaw-stdout-*")
 	if stdoutErr != nil {
 		return AgentProbeResult{}, stdoutErr
@@ -70,6 +78,71 @@ func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Questio
 		return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("openclaw agent failed: %w: %s", err, detail)
 	}
 	return AgentProbeResult{Output: output, ProbeMessage: msg}, nil
+}
+
+func openClawProbeSessionID(runID string, q Question) string {
+	raw := "baseline-" + runID + "-" + q.PackID + "-" + q.ID
+	const maxLen = 64
+	if len(raw) <= maxLen {
+		return raw
+	}
+	suffix := displayHash(raw)
+	prefix := "baseline-" + runID + "-"
+	maxSlugLen := maxLen - len(prefix) - len(suffix) - 1
+	if maxSlugLen < 8 {
+		return raw[:maxLen-len(suffix)-1] + "-" + suffix
+	}
+	slug := compactSessionSlug(q.PackID + "-" + q.ID)
+	if len(slug) > maxSlugLen {
+		slug = strings.Trim(slug[:maxSlugLen], "-_")
+	}
+	if slug == "" {
+		slug = "probe"
+	}
+	return prefix + slug + "-" + suffix
+}
+
+func compactSessionSlug(value string) string {
+	value = strings.TrimSpace(value)
+	var b strings.Builder
+	lastSep := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastSep = false
+		case r == '_' || r == '-':
+			if !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		default:
+			if !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func openClawAgentTimeoutSeconds() int {
+	const fallback = 90
+	raw := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_AGENT_TIMEOUT_SECONDS"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	if value < 5 {
+		return 5
+	}
+	if value > 600 {
+		return 600
+	}
+	return value
 }
 
 func extractAgentText(out []byte) string {
