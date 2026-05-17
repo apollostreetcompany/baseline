@@ -1,10 +1,10 @@
 # Baseline Question Set v0.1
 
-`baseline bootstrap preview` is the source of truth for the editable local question set. It stores a preview receipt before any agent probes are sent. `baseline bootstrap run` defaults to the 14-question Baseline Core pack.
+`baseline run` and `baseline setup` default to the 14-question Baseline Core pack. Legacy `baseline bootstrap preview` can still display the full editable local question set for compatibility.
 
 ## Default Timed Pack
 
-Baseline Core is the only pack sent by default during `baseline bootstrap run`.
+Baseline Core is the only pack sent by default during `baseline run`.
 
 | id | prompt | dimension |
 | --- | --- | --- |

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -88,52 +89,46 @@ func mcpTools() []map[string]any {
 	boolProp := func(desc string) map[string]any { return map[string]any{"type": "boolean", "description": desc} }
 	return []map[string]any{
 		{
-			"name":        "baseline_check",
-			"description": "Run a local Baseline health check. Fast mode never executes the agent. Full mode runs timed question probes only when run_agent is true.",
+			"name":        "baseline_setup",
+			"description": "Discovery: first tool to call when Baseline is not configured or the operator says \"run baseline\" for the first time. It writes Baseline-owned setup files, runs the real default target eval, returns report paths and next actions. Do not accept the result for the user.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
-				"mode":      stringProp("fast or full"),
-				"run_agent": boolProp("allow executing the configured local agent"),
+				"packs":             stringProp("advanced: baseline, enabled, all, or comma-separated pack ids"),
+				"agent_command":     stringProp("advanced escape hatch; prompt is passed as BASELINE_PROMPT"),
+				"register_openclaw": boolProp("also register Baseline as an OpenClaw MCP server"),
 			}},
 		},
 		{
-			"name":        "baseline_bootstrap",
-			"description": "Run bootstrap lifecycle actions: status, defaults, preview, run, accept, or reject. Accept requires explicit action.",
+			"name":        "baseline_run",
+			"description": "Run the normal Baseline evaluation for the operator-approved default target. This sends real probe messages, records latency/quality, writes REPORT.md and RESPONSES.md, and returns next actions.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
-				"action":     stringProp("status, defaults, preview, run, accept, or reject"),
-				"run_id":     stringProp("run id for accept/reject"),
-				"label":      stringProp("candidate or Good Baseline label"),
-				"notes":      stringProp("operator notes"),
-				"slot":       stringProp("Good Baseline slot: auto, 1, 2, or 3"),
-				"confirm":    stringProp("required for accept: accept <run_id>"),
-				"packs":      stringProp("run action only: baseline, enabled, all, or comma-separated pack ids"),
-				"preview_id": stringProp("optional preview id returned by action=preview before action=run"),
+				"packs":         stringProp("advanced: baseline, enabled, all, or comma-separated pack ids"),
+				"agent_command": stringProp("advanced escape hatch; prompt is passed as BASELINE_PROMPT"),
 			}},
 		},
 		{
-			"name":        "baseline_good",
-			"description": "List, accept, replace, or compare up to three user-approved Good Baselines for this workspace/config.",
-			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
-				"action":  stringProp("list, accept, replace, or compare"),
-				"run_id":  stringProp("run id"),
-				"label":   stringProp("Good Baseline label"),
-				"notes":   stringProp("operator notes"),
-				"slot":    stringProp("Good Baseline slot: auto, 1, 2, or 3"),
-				"confirm": stringProp("required for accept/replace: accept <run_id> or replace <run_id> slot <n>"),
-			}},
-		},
-		{
-			"name":        "baseline_report",
-			"description": "Return a run plus redacted observations. Defaults to latest run.",
-			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"run_id": stringProp("optional run id")}},
-		},
-		{
-			"name":        "baseline_compare",
-			"description": "Compare latest run against user-approved Good Baselines for this workspace/config.",
+			"name":        "baseline_doctor",
+			"description": "Read-only preflight for troubleshooting. It checks config, runtime, MCP registration, scrubber, and local latency. It does not create a Good Baseline candidate and should be used before proposing repairs.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 		},
 		{
+			"name":        "baseline_report",
+			"description": "Return the latest or requested run, markdown report, local responses when available, observations, and Good Baseline comparison. Use this before asking the operator to accept/reject/defer.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"run_id": stringProp("optional run id")}},
+		},
+		{
+			"name":        "baseline_accept",
+			"description": "Accept a reviewed run as a Good Baseline. Requires explicit operator confirmation: confirm must exactly equal accept <run_id>. Never call this without showing the report/responses to the operator first.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"run_id":  stringProp("run id to accept"),
+				"label":   stringProp("Good Baseline label"),
+				"notes":   stringProp("operator notes"),
+				"slot":    stringProp("Good Baseline slot: auto, 1, 2, or 3"),
+				"confirm": stringProp("required confirmation: accept <run_id>"),
+			}, "required": []string{"run_id", "confirm"}},
+		},
+		{
 			"name":        "baseline_schedule",
-			"description": "Install, remove, inspect, or trigger the daily local Baseline self-check. The run action performs a fast check and sync push.",
+			"description": "Install, remove, inspect, or trigger the daily local Baseline evaluation. The run action uses the configured default target and writes report artifacts.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"action": stringProp("status, install, remove, or run"), "at": stringProp("daily local time for install, HH:MM")}},
 		},
 		{
@@ -148,6 +143,14 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 	var payload any
 	var err error
 	switch name {
+	case "baseline_setup":
+		payload, err = mcpSetup(args)
+	case "baseline_run":
+		payload, err = mcpRun(args)
+	case "baseline_doctor":
+		payload, err = mcpDoctor()
+	case "baseline_accept":
+		payload, err = mcpAccept(args)
 	case "baseline_check":
 		mode := stringArg(args, "mode", "fast")
 		runAgent := boolArg(args, "run_agent", false)
@@ -171,7 +174,7 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 	case "baseline_config":
 		return nil, fmt.Errorf("baseline_config is no longer advertised; use baseline bootstrap/config CLI")
 	case "baseline_mark_known_good":
-		return nil, fmt.Errorf("baseline_mark_known_good is retired; use baseline_bootstrap with action=accept after user review")
+		return nil, fmt.Errorf("baseline_mark_known_good is retired; use baseline_accept after operator report review")
 	case "baseline_scrub_preview":
 		out, report := scrubText(stringArg(args, "text", ""))
 		payload = map[string]any{"scrubbed": out, "report": report}
@@ -179,10 +182,154 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("unknown tool %s", name)
 	}
 	if err != nil {
-		return map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}}, nil
+		return mcpErrorResult(name, err), nil
 	}
 	b, _ := json.MarshalIndent(payload, "", "  ")
 	return map[string]any{"content": []map[string]string{{"type": "text", "text": string(b)}}}, nil
+}
+
+func mcpSetup(args map[string]any) (any, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if err := saveConfig(cfg); err != nil {
+		return nil, err
+	}
+	db, err := openDB()
+	if err != nil {
+		return nil, err
+	}
+	db.Close()
+	if err := ensureRedactionFile(); err != nil {
+		return nil, err
+	}
+	if err := writeBootstrapContract(cfg); err != nil {
+		return nil, err
+	}
+	openClawRegistered := false
+	if boolArg(args, "register_openclaw", false) {
+		if err := registerOpenClaw(); err != nil {
+			return nil, err
+		}
+		openClawRegistered = true
+	}
+	packs := stringArg(args, "packs", cfg.Target.Packs)
+	run, err := RunBaseline(context.Background(), RunOptions{Mode: "setup", RunAgent: true, AgentCommand: stringArg(args, "agent_command", ""), Packs: packs})
+	if err != nil {
+		return nil, err
+	}
+	artifacts, _ := writeRunArtifacts(run)
+	run.Artifacts = artifacts
+	return map[string]any{
+		"status":              "setup_complete",
+		"config_path":         configPath(),
+		"bootstrap_contract":  bootstrapContractPath(),
+		"openclaw_registered": openClawRegistered,
+		"target":              cfg.Target,
+		"run":                 run,
+		"next_actions": []string{
+			"Show the operator the report and responses",
+			fmt.Sprintf("Ask whether to accept with confirm: accept %s", run.ID),
+			fmt.Sprintf("If accepted, call baseline_accept run_id=%s confirm=%q", run.ID, "accept "+run.ID),
+		},
+	}, nil
+}
+
+func mcpRun(args map[string]any) (any, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	packs := stringArg(args, "packs", cfg.Target.Packs)
+	run, err := RunBaseline(context.Background(), RunOptions{Mode: "run", RunAgent: true, AgentCommand: stringArg(args, "agent_command", ""), Packs: packs})
+	if err != nil {
+		return nil, err
+	}
+	artifacts, _ := writeRunArtifacts(run)
+	run.Artifacts = artifacts
+	return map[string]any{
+		"run": run,
+		"next_actions": []string{
+			fmt.Sprintf("Call baseline_report run_id=%s and show the operator REPORT.md plus RESPONSES.md", run.ID),
+			fmt.Sprintf("Accept only after operator says yes: baseline_accept run_id=%s confirm=%q", run.ID, "accept "+run.ID),
+		},
+	}, nil
+}
+
+func mcpDoctor() (any, error) {
+	run, err := RunBaseline(context.Background(), RunOptions{Mode: "fast"})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"status": run.Status,
+		"score":  run.HealthScore,
+		"run":    run,
+		"next_actions": []string{
+			"If doctor is ok, run baseline_run for a real eval",
+			"If doctor has findings, propose repairs before running the eval again",
+		},
+	}, nil
+}
+
+func mcpAccept(args map[string]any) (any, error) {
+	runID := stringArg(args, "run_id", "")
+	if err := requireMCPConfirmation("accept", runID, 0, stringArg(args, "confirm", "")); err != nil {
+		return nil, err
+	}
+	good, err := acceptCandidateOrRun(runID, stringArg(args, "label", "Good baseline"), stringArg(args, "notes", ""), parseSlot(stringArg(args, "slot", "auto")), false)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"accepted": good,
+		"next_actions": []string{
+			"Run baseline_report to verify the accepted Good Baseline",
+		},
+	}, nil
+}
+
+func mcpErrorResult(tool string, err error) map[string]any {
+	payload := map[string]any{
+		"isError": true,
+		"error": map[string]any{
+			"type":         classifyMCPError(err),
+			"message":      err.Error(),
+			"recoverable":  true,
+			"tool":         tool,
+			"next_actions": suggestedMCPNextActions(tool, err),
+		},
+	}
+	b, _ := json.MarshalIndent(payload, "", "  ")
+	return map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": string(b)}}}
+}
+
+func classifyMCPError(err error) string {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "confirm"):
+		return "operator_confirmation_required"
+	case strings.Contains(msg, "openclaw"), strings.Contains(msg, "runtime"):
+		return "target_runtime_unavailable"
+	case strings.Contains(msg, "timeout"):
+		return "target_timeout"
+	case strings.Contains(msg, "config"):
+		return "configuration_error"
+	default:
+		return "baseline_error"
+	}
+}
+
+func suggestedMCPNextActions(tool string, err error) []string {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "confirm") {
+		return []string{"Show the report and responses to the operator", "Ask for explicit confirmation", "Retry with confirm=\"accept <run_id>\" only if the operator approves"}
+	}
+	if strings.Contains(msg, "timeout") {
+		return []string{"Read the run receipt if one was written", "Do not repeat the same full run more than twice", "Ask the operator whether to pin a faster model or raise the timeout"}
+	}
+	return []string{"Run baseline_doctor", "Report the failing step to the operator", "Propose a repair before changing configuration"}
 }
 
 func mcpSchedule(args map[string]any) (any, error) {
@@ -345,7 +492,31 @@ func mcpReport(runID string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"run": run, "observations": observations}, nil
+		compare, err := compareToKnownGood(db, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		artifacts := runArtifactPaths(run.ID)
+		reportMarkdown := ""
+		responsesMarkdown := ""
+		if b, err := os.ReadFile(artifacts.ReportPath); err == nil {
+			reportMarkdown = string(b)
+		}
+		if b, err := os.ReadFile(artifacts.ResponsesPath); err == nil {
+			responsesMarkdown = string(b)
+		}
+		return map[string]any{
+			"run":                run,
+			"observations":       observations,
+			"compare_findings":   compare,
+			"artifacts":          artifacts,
+			"report_markdown":    reportMarkdown,
+			"responses_markdown": responsesMarkdown,
+			"next_actions": []string{
+				"Show report_markdown and responses_markdown to the operator",
+				fmt.Sprintf("Accept only after approval: baseline_accept run_id=%s confirm=%q", run.ID, "accept "+run.ID),
+			},
+		}, nil
 	})
 }
 

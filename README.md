@@ -15,7 +15,7 @@ Live launch surface:
 
 ```sh
 go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
-baseline bootstrap --openclaw
+baseline setup
 ```
 
 Local source build:
@@ -26,27 +26,27 @@ go build -o bin/baseline ./cmd/baseline
 
 ## Local OpenClaw Dogfood
 
-Run these commands for a local-only OpenClaw bootstrap, first Good Baseline, and drift comparison:
+Run these commands for a local-only OpenClaw setup, first Good Baseline, and drift comparison:
 
 ```sh
-baseline bootstrap --openclaw
-baseline bootstrap preview
-baseline bootstrap run
-baseline bootstrap accept --label clean-local
+baseline setup
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
 
-Use `baseline check --fast` for local runtime/repo/MCP checks when you do not want to send OpenClaw probe messages. Fast mode never runs the agent.
-`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Use `--packs enabled` or `--packs all` only after reviewing the wider preview. The full v0.1 pack list is in [docs/QUESTION_SET.md](docs/QUESTION_SET.md).
+`baseline setup` writes `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, the local database/redaction files, then runs the real default target eval. It prints the report and response artifact paths so the operator can review before accepting. Use `baseline doctor` for read-only preflight when you do not want to send agent probe messages.
 
-## Bootstrap Lifecycle
+The default target is OpenClaw `agent:main` with `model_policy: follow_current`, which means Baseline evaluates the agent as the operator currently configured it. Pinning a different model is an advanced config choice. The default run uses the 14-question Baseline Core pack; use `--packs enabled` or `--packs all` only when the operator wants a wider eval. The full v0.1 pack list is in [docs/QUESTION_SET.md](docs/QUESTION_SET.md).
 
-`baseline bootstrap` is idempotent. It creates `~/.baseline/config.json`, `~/.baseline/baseline.db`, report/redaction directories, runs SQLite migrations, detects OpenClaw, registers the Baseline stdio MCP server when `--openclaw` is set, and prints the next command. It does not enable cloud sync or execute agent prompts unless the user supplies explicit sync or runner flags.
+## Setup Lifecycle
+
+`baseline setup` is idempotent for Baseline-owned files. It creates `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, `~/.baseline/baseline.db`, report/redaction directories, runs SQLite migrations, detects OpenClaw, runs the default eval, and prints the next command. It does not enable cloud sync. OpenClaw MCP registration stays explicit through `baseline install openclaw` or `baseline setup --register-openclaw`.
 
 Optional sync setup stays explicit:
 
 ```sh
-baseline bootstrap --openclaw --sync-url https://baseline-ai.ryan-borker.workers.dev --sync-token <token>
+baseline sync on --url https://baseline-ai.ryan-borker.workers.dev --token <token>
 ```
 
 ## Good Baselines
@@ -54,9 +54,9 @@ baseline bootstrap --openclaw --sync-url https://baseline-ai.ryan-borker.workers
 Good Baselines are manually accepted local anchors. v0.1 keeps up to three active Good Baselines per workspace so users can preserve a small set of trusted states without turning every passing run into truth.
 
 ```sh
-baseline good accept [RUN_ID] --label clean-local
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline good list
-baseline good replace [RUN_ID] --slot 1 --label clean-local
+baseline good replace <RUN_ID> --slot 1 --confirm "replace <RUN_ID> slot 1" --label clean-local
 baseline compare
 ```
 
@@ -65,10 +65,12 @@ baseline compare
 ## Run
 
 ```sh
-baseline check --fast
-baseline check --full --run-agent
-baseline latest --json
+baseline setup
+baseline run
 baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>"
+baseline doctor
+baseline latest --json
 baseline compare
 baseline sync status
 baseline sync push
@@ -77,7 +79,7 @@ baseline schedule status
 baseline schedule run
 ```
 
-Fast mode never runs the agent. Full mode sends real OpenClaw probe messages only when `--run-agent` is set. Bootstrap run always uses explicit probe execution because the user asked to establish the first baseline, and defaults to the 14-question Baseline Core pack.
+`baseline run` sends real probe messages to the configured target, records latency/quality, and writes `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. `baseline doctor` is read-only preflight and never becomes a Good Baseline candidate. Legacy `baseline check --fast|--full` remains available for scripted compatibility.
 
 ## OpenClaw Timing and Tokens
 
@@ -104,7 +106,9 @@ baseline config get cloud_sync --json
 baseline config set cloud_sync true
 baseline config set api_base_url <url>
 baseline config set api_token <token>
-baseline config set agent_command '<command using BASELINE_PROMPT>'
+baseline config set target.model_policy pinned
+baseline config set target.pinned_model openai/gpt-5.5
+baseline config set agent_command '<advanced command using BASELINE_PROMPT>'
 baseline config set monitor_packs.workflow_test.enabled true
 baseline config set monitor_packs.self_log_execution.enabled false
 baseline config validate --json
@@ -114,11 +118,11 @@ baseline config validate --json
 
 The MCP server exposes seven tools:
 
-- `baseline_check`
-- `baseline_bootstrap`
-- `baseline_good`
+- `baseline_setup`
+- `baseline_run`
+- `baseline_doctor`
 - `baseline_report`
-- `baseline_compare`
+- `baseline_accept`
 - `baseline_schedule`
 - `baseline_scrub_preview`
 
@@ -129,11 +133,11 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./b
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_schedule","arguments":{"action":"run"}}}' | ./bin/baseline serve mcp
 ```
 
-For MCP bootstrap runs, call `baseline_bootstrap` with `action:"preview"` before `action:"run"`. The optional `preview_id` argument pins the run to a specific preview receipt.
+MCP errors return structured recovery hints and `next_actions`. Agents should run `baseline_setup` once, then `baseline_run`, `baseline_report`, and only call `baseline_accept` after showing the operator the markdown report plus local responses and receiving explicit confirmation.
 
 ## Daily Schedule
 
-On macOS, Baseline installs a user LaunchAgent at `~/Library/LaunchAgents/ai.baseline.daily.plist`. The scheduled job runs `baseline schedule run`, which performs a fast local check and syncs queued redacted payloads when cloud sync is enabled.
+On macOS, Baseline installs a user LaunchAgent at `~/Library/LaunchAgents/ai.baseline.daily.plist`. The scheduled job runs `baseline schedule run`, which evaluates the configured default target and syncs queued redacted payloads when cloud sync is enabled.
 
 ```sh
 baseline schedule install --at 09:00

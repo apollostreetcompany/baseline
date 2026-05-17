@@ -18,33 +18,33 @@ go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
 Run exactly:
 
 ```sh
-baseline bootstrap --openclaw
-baseline bootstrap preview
-baseline bootstrap run
-baseline bootstrap accept --label clean-local
+baseline setup
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
 
-Use `baseline check --fast` when you only want local runtime/repo/MCP checks and do not want to send OpenClaw probe messages.
-`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Use `--packs enabled` or `--packs all` only after previewing the wider packs.
+Use `baseline doctor` when you only want read-only runtime/repo/MCP/config preflight and do not want to send OpenClaw probe messages. `baseline run` and `baseline setup` send real probe messages to the configured default target, write markdown artifacts, and require operator confirmation before accepting.
 
 For local development from this repository:
 
 ```sh
 go build -o bin/baseline ./cmd/baseline
 pnpm --dir package test
-BASELINE_BIN="$PWD/bin/baseline" pnpm --dir package exec baseline check --fast
+BASELINE_BIN="$PWD/bin/baseline" pnpm --dir package exec baseline doctor
 ```
 
 ## CLI Shape
 
 ```sh
-baseline bootstrap --openclaw
-baseline good accept [RUN_ID] --label <label>
+baseline setup
+baseline run
+baseline report [RUN_ID]
+baseline accept RUN_ID --confirm "accept RUN_ID" --label <label>
 baseline good list
 baseline config show
 baseline config set api_token <token>
 baseline schedule install --at 09:00
 ```
 
-Fast mode never executes the local agent. Bootstrap run and `check --full --run-agent` send real OpenClaw messages, capture Baseline send/receive timestamps, and use OpenClaw session metadata for tokens when available.
+`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility.

@@ -29,11 +29,13 @@ type ScheduleStatus struct {
 type ScheduleRunResult struct {
 	Action      string `json:"action"`
 	RunID       string `json:"run_id"`
+	Mode        string `json:"mode"`
 	Status      string `json:"status"`
 	HealthScore int    `json:"health_score"`
 	CloudSynced bool   `json:"cloud_synced"`
 	SyncSynced  int    `json:"sync_synced"`
 	SyncFailed  int    `json:"sync_failed"`
+	ReportPath  string `json:"report_path,omitempty"`
 }
 
 func installSchedule(exe, at string) (ScheduleStatus, error) {
@@ -99,12 +101,16 @@ func scheduleStatus() (ScheduleStatus, error) {
 }
 
 func runScheduledBaseline(ctx context.Context) (ScheduleRunResult, error) {
-	run, err := RunBaseline(ctx, RunOptions{Mode: "fast"})
+	cfg, err := loadConfig()
 	if err != nil {
 		return ScheduleRunResult{}, err
 	}
-	writeReportFile(run)
-	cfg, _ := loadConfig()
+	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunAgent: true, Packs: cfg.Target.Packs})
+	if err != nil {
+		return ScheduleRunResult{}, err
+	}
+	artifacts, _ := writeRunArtifacts(run)
+	run.Artifacts = artifacts
 	var syncResult SyncFlushResult
 	if cfg.CloudSync && cfg.APIToken != "" {
 		db, err := openDB()
@@ -120,11 +126,13 @@ func runScheduledBaseline(ctx context.Context) (ScheduleRunResult, error) {
 	return ScheduleRunResult{
 		Action:      "run",
 		RunID:       run.ID,
+		Mode:        run.Mode,
 		Status:      run.Status,
 		HealthScore: run.HealthScore,
 		CloudSynced: run.CloudSynced || syncResult.Synced > 0,
 		SyncSynced:  syncResult.Synced,
 		SyncFailed:  syncResult.Failed,
+		ReportPath:  artifacts.ReportPath,
 	}, nil
 }
 

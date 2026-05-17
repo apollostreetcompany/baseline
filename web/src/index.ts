@@ -568,8 +568,8 @@ function landingPage(env: Env): string {
         <h2>Three minute setup</h2>
         <div class="steps">
           <div><span>1</span><strong>Install</strong><code>go install github.com/apollostreetcompany/baseline/cmd/baseline@latest</code></div>
-          <div><span>2</span><strong>Bootstrap</strong><code>baseline bootstrap --openclaw</code></div>
-          <div><span>3</span><strong>Run</strong><code>baseline bootstrap run</code></div>
+          <div><span>2</span><strong>Setup</strong><code>baseline setup</code></div>
+          <div><span>3</span><strong>Review</strong><code>baseline report</code></div>
         </div>
       </section>
 
@@ -658,28 +658,27 @@ function adminPage(env: Env): string {
 
 function mcpDocsPage(env: Env): string {
   const install = `go build -o bin/baseline ./cmd/baseline
-./bin/baseline bootstrap --openclaw
-./bin/baseline bootstrap preview
-./bin/baseline bootstrap run
-./bin/baseline bootstrap accept --label clean-local
+./bin/baseline setup
+./bin/baseline report
+./bin/baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
 openclaw mcp list
 ./bin/baseline compare`;
   return layout(env, "Baseline MCP installation", `
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
       <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: check, bootstrap, good, report, compare, schedule, and scrub preview. Fast checks are local-only. Bootstrap and full checks execute the agent only with explicit opt-in.</p>
+      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. Doctor is local preflight; setup and run execute the operator-approved default target and write local markdown artifacts.</p>
       <pre><code>${escapeHTML(install)}</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
-baseline check --fast
+baseline doctor
 baseline sync push</code></pre>
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
       <h2>Recommended first Good Baseline</h2>
-      <pre><code>baseline bootstrap preview
-baseline bootstrap run
-baseline bootstrap accept --label clean-local
+      <pre><code>baseline setup
+baseline report
+baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
 baseline compare</code></pre>
     </main>
   `, softwareJsonLD(env));

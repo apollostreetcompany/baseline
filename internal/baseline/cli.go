@@ -24,6 +24,14 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "init":
 		return cmdInit(args[1:], stdout, stderr)
+	case "setup":
+		return cmdSetup(ctx, args[1:], stdout, stderr)
+	case "run":
+		return cmdRun(ctx, args[1:], stdout, stderr)
+	case "accept":
+		return cmdAccept(args[1:], stdout, stderr)
+	case "status":
+		return cmdStatus(args[1:], stdout, stderr)
 	case "bootstrap":
 		return cmdBootstrap(ctx, args[1:], stdout, stderr)
 	case "check":
@@ -70,12 +78,14 @@ func printHelp(w io.Writer) {
 	fmt.Fprint(w, `Baseline v0
 
 Usage:
-  baseline init [--register-openclaw]
-  baseline bootstrap [--openclaw] | status|defaults|preview|run|accept|reject
-  baseline check [--fast|--full] [--run-agent] [--packs enabled|all|baseline] [--json] [--agent-command CMD]
-  baseline latest [--json]
+  baseline setup [--json]
+  baseline run [--json]
   baseline report [RUN_ID]
+  baseline accept RUN_ID --confirm "accept RUN_ID"
+  baseline status [--json]
+  baseline doctor
   baseline compare
+  baseline latest [--json]
   baseline good accept [RUN_ID] [--slot auto|1|2|3] [--label LABEL]
   baseline good list
   baseline config file|show|get|set|patch|unset|validate
@@ -85,10 +95,15 @@ Usage:
   baseline schedule install|status|run|remove [--at HH:MM]
   baseline scrub preview <text>
 
+Advanced:
+  baseline check [--fast|--full] [--run-agent] [--packs enabled|all|baseline] [--json] [--agent-command CMD]
+  baseline bootstrap [--openclaw] | status|defaults|preview|run|accept|reject
+
 Safety defaults:
-  - Local SQLite only until sync is enabled.
-  - Full question probes do not execute an agent unless --run-agent, bootstrap run, or BASELINE_RUN_AGENT=1 is set.
-  - Cloud export stores redacted summaries by default.
+  - baseline run executes the operator-approved target and records response quality/timing.
+  - baseline doctor is read-only preflight; it is not a Good Baseline candidate.
+  - Good Baselines require explicit operator confirmation.
+  - Cloud export stores redacted summaries by default; full responses stay local.
 `)
 }
 
@@ -159,9 +174,8 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if _, err := os.Stat(redactionPath()); errors.Is(err, os.ErrNotExist) {
-		_ = atomicWrite(redactionPath(), []byte("# Baseline local redaction rules. Cloud sync exports summaries unless allow_raw_output is true.\n"), 0o600)
-	}
+	_ = ensureRedactionFile()
+	_ = writeBootstrapContract(cfg)
 	fmt.Fprintf(stdout, "Initialized Baseline at %s\n", baseDir())
 	fmt.Fprintf(stdout, "Config: %s\nDatabase: %s\n", configPath(), dbPath())
 	if *register {
@@ -200,7 +214,8 @@ func cmdCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	writeReportFile(run)
+	artifacts, _ := writeRunArtifacts(run)
+	run.Artifacts = artifacts
 	if *jsonOut {
 		return writeJSON(stdout, stderr, run)
 	}
@@ -244,6 +259,15 @@ func cmdLatest(args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdReport(args []string, stdout, stderr io.Writer) int {
+	jsonOut := false
+	var positional []string
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonOut = true
+			continue
+		}
+		positional = append(positional, arg)
+	}
 	db, err := openDB()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -251,8 +275,8 @@ func cmdReport(args []string, stdout, stderr io.Writer) int {
 	}
 	defer db.Close()
 	var run Run
-	if len(args) > 0 {
-		run, err = runByID(db, args[0])
+	if len(positional) > 0 {
+		run, err = runByID(db, positional[0])
 	} else {
 		run, err = latestRun(db)
 	}
@@ -264,6 +288,23 @@ func cmdReport(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
+	}
+	if !jsonOut {
+		artifacts := runArtifactPaths(run.ID)
+		if report, err := os.ReadFile(artifacts.ReportPath); err == nil {
+			fmt.Fprint(stdout, string(report))
+			if responses, err := os.ReadFile(artifacts.ResponsesPath); err == nil {
+				fmt.Fprint(stdout, "\n\n")
+				fmt.Fprint(stdout, string(responses))
+			}
+			return 0
+		}
+		fmt.Fprintf(stdout, "Baseline %s: score %d (%s) in %dms\n", run.ID, run.HealthScore, run.Status, run.DurationMS)
+		for _, f := range run.Findings {
+			fmt.Fprintf(stdout, "- %s %s: %s\n", strings.ToUpper(f.Severity), f.CheckID, f.Message)
+		}
+		fmt.Fprintf(stdout, "\nNo markdown artifacts found. Re-run `baseline run` to write REPORT.md and RESPONSES.md.\n")
+		return 0
 	}
 	payload := map[string]any{"run": run, "observations": observations}
 	return writeJSON(stdout, stderr, payload)
@@ -411,7 +452,22 @@ func cmdDoctor(ctx context.Context, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "config=%s db=%s sync=%t openclaw=%t latest_score=%d\n", configPath(), dbPath(), cfg.CloudSync, openClawErr == nil, run.HealthScore)
+	fmt.Fprintln(stdout, "Baseline doctor")
+	fmt.Fprintf(stdout, "  config: %s\n", configPath())
+	fmt.Fprintf(stdout, "  database: %s\n", dbPath())
+	fmt.Fprintf(stdout, "  target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
+	fmt.Fprintf(stdout, "  sync: %t\n", cfg.CloudSync)
+	fmt.Fprintf(stdout, "  openclaw_on_path: %t\n", openClawErr == nil)
+	fmt.Fprintf(stdout, "  preflight_score: %d (%s)\n", run.HealthScore, run.Status)
+	for _, f := range run.Findings {
+		fmt.Fprintf(stdout, "- %s %s: %s\n", strings.ToUpper(f.Severity), f.CheckID, f.Message)
+		if f.Fix != "" {
+			fmt.Fprintf(stdout, "  Fix: %s\n", f.Fix)
+		}
+	}
+	if len(run.Findings) == 0 {
+		fmt.Fprintln(stdout, "No preflight findings. Next: baseline run")
+	}
 	return statusCode(run.Status)
 }
 
@@ -440,12 +496,7 @@ func writeJSON(stdout, stderr io.Writer, v any) int {
 }
 
 func writeReportFile(run Run) {
-	b, err := json.MarshalIndent(run, "", "  ")
-	if err != nil {
-		return
-	}
-	_ = ensureDirs()
-	_ = atomicWrite(filepath.Join(baseDir(), "reports", run.ID+".json"), b, 0o600)
+	_, _ = writeRunArtifacts(run)
 }
 
 func statusCode(status string) int {

@@ -23,14 +23,15 @@ go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
 Run exactly four commands for a local OpenClaw Good Baseline:
 
 ```sh
-baseline bootstrap --openclaw
-baseline bootstrap preview
-baseline bootstrap run
-baseline bootstrap accept --label clean-local
+baseline setup
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
+baseline compare
 ```
 
-Then run `baseline compare` any time you want to check drift against the accepted Good Baselines. Use `baseline check --fast` when you only want local checks and do not want to send OpenClaw probe messages.
-`baseline bootstrap run` requires a recent preview receipt, defaults to the 14-question Baseline Core pack, and accepts `--preview-id <id>` from the preview output when you want an exact receipt match. Run `baseline bootstrap run --packs enabled` only after reviewing the wider pack preview.
+Then run `baseline run` and `baseline compare` any time you want to check drift against the accepted Good Baselines. Use `baseline doctor` when you only want local preflight and do not want to send OpenClaw probe messages.
+
+`baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
 
 Manual MCP registry fallback:
 
@@ -45,6 +46,8 @@ OpenClaw behavior checks invoke `openclaw agent --json --session-id <baseline-se
 The OpenClaw MCP bridge keeps live events only while connected; durable history must be read from the Gateway-backed transcript tools.
 
 ## Daily Self-Check
+
+Scheduled checks run the configured default eval target and write report artifacts. They are not local-only plumbing checks.
 
 From OpenClaw, ask the Baseline plugin to call:
 

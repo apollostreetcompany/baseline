@@ -15,11 +15,11 @@ The v0 shape was narrowed around the strongest supplied X research signals:
 
 ### 1. OpenClaw Power User
 
-Judgment: irresistible after MCP registration became one command and fast mode stayed local-only.
+Judgment: irresistible after setup became one command and preflight became clearly separate from real eval.
 
 Objection: "Do not run my agent or export transcripts without asking."
 
-Change made: `baseline check --fast` never executes the agent; `--full` skips question execution unless `--run-agent` or `BASELINE_RUN_AGENT=1` is set. Cloud sync exports only a reduced redacted payload.
+Change made: `baseline doctor` is read-only preflight, while `baseline run` is the real timed eval. `baseline accept` requires an exact operator confirmation string. Cloud sync exports only a reduced redacted payload.
 
 ### 2. Agency Owner
 
@@ -66,10 +66,10 @@ NO GO for broad "LLM observability" positioning. Baseline is narrower: known-goo
 Ask 10 OpenClaw or Hermes power users to run:
 
 ```sh
-baseline init --register-openclaw
-baseline check --fast
-baseline known-good mark --label clean
-baseline check --full
+baseline setup
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean
+baseline run
 baseline compare
 ```
 

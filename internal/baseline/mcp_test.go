@@ -15,21 +15,27 @@ func TestMCPToolsListIsSmallAndIncludesCoreTools(t *testing.T) {
 		name, _ := tool["name"].(string)
 		seen[name] = true
 	}
-	for _, want := range []string{"baseline_check", "baseline_compare", "baseline_schedule", "baseline_scrub_preview"} {
+	for _, want := range []string{"baseline_setup", "baseline_run", "baseline_doctor", "baseline_report", "baseline_accept", "baseline_schedule", "baseline_scrub_preview"} {
 		if !seen[want] {
 			t.Fatalf("missing MCP tool %s in %+v", want, seen)
 		}
 	}
 }
 
-func TestMCPScheduleRunTriggersFastCheck(t *testing.T) {
+func TestMCPScheduleRunTriggersConfiguredEval(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
+	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
+	cfg.AgentCommand = "printf baseline"
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 	payload, err := callMCPTool("baseline_schedule", map[string]any{"action": "run"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := mcpText(t, payload)
-	if !strings.Contains(text, `"action": "run"`) || !strings.Contains(text, `"run_id":`) {
+	if !strings.Contains(text, `"action": "run"`) || !strings.Contains(text, `"run_id":`) || !strings.Contains(text, `"mode": "run"`) {
 		t.Fatalf("expected schedule run payload, got %s", text)
 	}
 }

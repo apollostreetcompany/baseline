@@ -12,11 +12,25 @@ import (
 )
 
 func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Question) (AgentProbeResult, error) {
+	return runOpenClawProbeWithTarget(ctx, openclawPath, runID, q, defaultConfig().Target)
+}
+
+func runOpenClawProbeWithTarget(ctx context.Context, openclawPath, runID string, q Question, target BaselineTarget) (AgentProbeResult, error) {
 	sessionID := openClawProbeSessionID(runID, q)
-	agentTimeout := openClawAgentTimeoutSeconds()
+	agentTimeout := openClawAgentTimeoutSeconds(target)
 	args := []string{"agent", "--json", "--session-id", sessionID, "--message", q.Prompt, "--timeout", strconv.Itoa(agentTimeout)}
-	if model := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_MODEL")); model != "" {
-		args = append(args, "--model", model)
+	if agentName := targetAgentName(target); agentName != "" {
+		args = append(args, "--agent", agentName)
+	}
+	envModel := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_MODEL"))
+	if target.ModelPolicy == "pinned" && strings.TrimSpace(target.PinnedModel) != "" && envModel == "" {
+		args = append(args, "--model", strings.TrimSpace(target.PinnedModel))
+	}
+	if thinking := strings.TrimSpace(target.Thinking); thinking != "" {
+		args = append(args, "--thinking", thinking)
+	}
+	if envModel != "" {
+		args = append(args, "--model", envModel)
 	}
 	if thinking := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_THINKING")); thinking != "" {
 		args = append(args, "--thinking", thinking)
@@ -126,8 +140,8 @@ func compactSessionSlug(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func openClawAgentTimeoutSeconds() int {
-	const fallback = 90
+func openClawAgentTimeoutSeconds(target BaselineTarget) int {
+	fallback := targetTimeoutSeconds(target)
 	raw := strings.TrimSpace(os.Getenv("BASELINE_OPENCLAW_AGENT_TIMEOUT_SECONDS"))
 	if raw == "" {
 		return fallback

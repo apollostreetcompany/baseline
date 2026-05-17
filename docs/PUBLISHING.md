@@ -82,23 +82,24 @@ openclaw plugins install ./baseline-openclaw-plugin-v0.1.0.tgz
 After installing any distribution, verify the same local command surface:
 
 ```sh
-baseline bootstrap --openclaw
-baseline check --fast
-baseline good accept --label clean-local
+baseline setup
+baseline doctor
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | baseline serve mcp
 ```
 
-The MCP response should include `baseline_check`, `baseline_bootstrap`,
-`baseline_good`, `baseline_report`, `baseline_compare`, `baseline_schedule`,
+The MCP response should include `baseline_setup`, `baseline_run`,
+`baseline_doctor`, `baseline_report`, `baseline_accept`, `baseline_schedule`,
 and `baseline_scrub_preview`.
 
-For an OpenClaw runner smoke, use the explicit bootstrap runner:
+For an OpenClaw runner smoke, use the normal eval path:
 
 ```sh
-baseline bootstrap preview
-baseline bootstrap run
-baseline bootstrap accept --label clean-local
+baseline run
+baseline report
+baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 ```
 
-This path must use real OpenClaw message timing and token metadata when OpenClaw exposes it. `baseline bootstrap run` requires a recent preview receipt and defaults to the 14-question Baseline Core pack; wider packs require `--packs enabled` or `--packs all` after preview. Missing session usage should be reported as unavailable, not estimated.
+This path must use real OpenClaw message timing and token metadata when OpenClaw exposes it. `baseline run` defaults to the 14-question Baseline Core pack; wider packs require explicit operator approval through `--packs enabled` or `--packs all`. Missing session usage should be reported as unavailable, not estimated.

@@ -5,7 +5,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Git remote `origin` is configured as `https://github.com/apollostreetcompany/baseline.git`.
 - Bead 6 committed locally as `b00a1a7` before amend; final commit is the current `HEAD`.
 - v0 is a local known-good drift checker, not a broad eval platform.
-- Fast mode must never execute the agent. Full mode requires explicit opt-in for agent execution.
+- `baseline doctor` must never execute the agent. `baseline run`, `baseline setup`, and scheduled runs execute the operator-approved default target and write local report/response artifacts.
 - Cloud sync must fail closed and export only redacted/hash summaries.
 - Payment checkout is implemented but cannot go live without Stripe secrets, price IDs, or payment links.
 - OpenProse Codex skill was repaired to upstream 0.13.1 on 2026-05-14; stale local copy backed up at `/Users/future/.codex/skills/open-prose.backup-20260513172352`.
@@ -21,7 +21,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Personality drift can be scored as behavior drift: verbosity, warmth, directness, sycophancy, pushback, substance consistency, and user-style adherence.
 - Go was selected for the CLI/MCP binary and Cloudflare Workers + Neon for the launch surface.
 - MCP is intentionally limited to seven legible tools.
-- The first dogfood path is: `baseline bootstrap --openclaw`, `baseline bootstrap preview`, `baseline bootstrap run`, explicit Good Baseline accept, `baseline compare`, redacted cloud sync.
+- The first dogfood path is: `baseline setup`, `baseline report`, explicit `baseline accept RUN_ID --confirm "accept RUN_ID"`, `baseline run`, `baseline compare`, redacted cloud sync.
 - Bootstrap agent probes require a recent preview receipt before messages are sent.
 - Baseline Core OpenClaw probes run with bounded concurrency and store actual per-probe send/receive durations, not recorder lag.
 - Attached recipe-style `.prose.md` files are legacy frontmatter workflows without `kind:`; they now have compatibility run receipts under `.prose/runs/`.
@@ -42,15 +42,16 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 12: Deployed Worker and verified local run sync renders on dashboard APIs
 - [x] Bead 13: Added daily launchd self-check schedule and OpenClaw-triggerable `baseline_schedule` MCP tool
 - [x] Bead 14: Launched and hardened v0.1 bootstrap/Good Baseline flow with updated 14-question Baseline Core, preview-before-run receipts, scoped Good Baseline slots, bounded real OpenClaw send/receive timing, fresh-only token metadata, OpenClaw-style config CLI, updated MCP tools, local binary install, and deployed Worker docs/question set
+- [x] Bead 15: Added operator-first Baseline setup/run/report/accept UX, local response artifacts, agent BOOTSTRAP.md contract, default target config, real scheduled evals, structured MCP recovery errors, and seven workflow-first MCP tools.
 
 ### Now
-- Bead 14 launch hardening complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
-- Final real OpenClaw smoke candidate: `run_diiaznd9cfao`, warning score 76, 14 Baseline Core probes, wall-clock 222190ms. Per-probe durations now match stored metrics; token counts were fresh for 12/14 probes and stale/unexported for `tools` and `ops_change`.
-- `baseline schedule run` passed locally as fast-only: `run_diib2ooub0rc`, status ok, score 100, cloud_synced true.
+- Bead 15 operator UX complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
+- Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
+- Local smoke with a custom agent command produced `run_dil097okvm8w`, wrote markdown report/response artifacts, and demonstrated operator-facing warnings for low-quality probe answers.
 
 ### Next
-- Bead 15: Split dogfood admin token from ingest token before external pilot.
-- Bead 16: Stripe entitlement or API token/workspace model, depending on available credentials.
+- Bead 16: Split dogfood admin token from ingest token before external pilot.
+- Bead 17: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions

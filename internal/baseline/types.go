@@ -3,22 +3,24 @@ package baseline
 import "time"
 
 type Run struct {
-	ID                 string        `json:"run_id"`
-	Mode               string        `json:"mode"`
-	StartedAt          time.Time     `json:"started_at"`
-	DurationMS         int64         `json:"duration_ms"`
-	Status             string        `json:"status"`
-	HealthScore        int           `json:"health_score"`
-	Workspace          string        `json:"workspace"`
-	ScopeKey           string        `json:"scope_key"`
-	ConfigHash         string        `json:"config_hash"`
-	QuestionSetVersion string        `json:"question_set_version"`
-	AgentKind          string        `json:"agent_kind"`
-	CloudSynced        bool          `json:"cloud_synced"`
-	RawExported        bool          `json:"raw_exported"`
-	RedactionStatus    string        `json:"redaction_status"`
-	Checks             []CheckResult `json:"checks"`
-	Findings           []Finding     `json:"findings"`
+	ID                 string          `json:"run_id"`
+	Mode               string          `json:"mode"`
+	StartedAt          time.Time       `json:"started_at"`
+	DurationMS         int64           `json:"duration_ms"`
+	Status             string          `json:"status"`
+	HealthScore        int             `json:"health_score"`
+	Workspace          string          `json:"workspace"`
+	ScopeKey           string          `json:"scope_key"`
+	ConfigHash         string          `json:"config_hash"`
+	QuestionSetVersion string          `json:"question_set_version"`
+	AgentKind          string          `json:"agent_kind"`
+	CloudSynced        bool            `json:"cloud_synced"`
+	RawExported        bool            `json:"raw_exported"`
+	RedactionStatus    string          `json:"redaction_status"`
+	Checks             []CheckResult   `json:"checks"`
+	Findings           []Finding       `json:"findings"`
+	Artifacts          RunArtifacts    `json:"artifacts,omitempty"`
+	Responses          []ProbeResponse `json:"-"`
 }
 
 type CheckResult struct {
@@ -41,6 +43,27 @@ type Finding struct {
 	Fix      string `json:"suggested_fix,omitempty"`
 }
 
+type RunArtifacts struct {
+	ReportPath    string `json:"report_path,omitempty"`
+	ResponsesPath string `json:"responses_path,omitempty"`
+	ReceiptPath   string `json:"receipt_path,omitempty"`
+	MetricsPath   string `json:"metrics_path,omitempty"`
+	JSONPath      string `json:"json_path,omitempty"`
+}
+
+type ProbeResponse struct {
+	PackID           string `json:"pack_id"`
+	ProbeID          string `json:"probe_id"`
+	Dimension        string `json:"dimension"`
+	Prompt           string `json:"prompt"`
+	ExpectedBehavior string `json:"expected_behavior,omitempty"`
+	Output           string `json:"output,omitempty"`
+	ScrubbedOutput   string `json:"scrubbed_output,omitempty"`
+	Error            string `json:"error,omitempty"`
+	DurationMS       int64  `json:"duration_ms"`
+	Status           string `json:"status"`
+}
+
 type Observation struct {
 	Key               string
 	ValueHash         string
@@ -52,6 +75,7 @@ type Observation struct {
 type Config struct {
 	Version        int                    `json:"version"`
 	WorkspaceName  string                 `json:"workspace_name"`
+	Target         BaselineTarget         `json:"target"`
 	UserFacts      map[string]string      `json:"user_facts"`
 	MemorySeeds    []MemorySeed           `json:"memory_seeds"`
 	AgentCommand   string                 `json:"agent_command"`
@@ -61,6 +85,16 @@ type Config struct {
 	AllowRawOutput bool                   `json:"allow_raw_output"`
 	MonitorPacks   []MonitorPackSelection `json:"monitor_packs"`
 	Packs          PackConfig             `json:"packs,omitempty"`
+}
+
+type BaselineTarget struct {
+	Runtime        string `json:"runtime"`
+	Entity         string `json:"entity"`
+	ModelPolicy    string `json:"model_policy"`
+	PinnedModel    string `json:"pinned_model,omitempty"`
+	Thinking       string `json:"thinking,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+	Packs          string `json:"packs,omitempty"`
 }
 
 type PackConfig struct {

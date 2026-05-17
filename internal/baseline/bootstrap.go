@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -94,9 +93,8 @@ func cmdBootstrapRoot(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	db.Close()
-	if _, err := os.Stat(redactionPath()); errors.Is(err, os.ErrNotExist) {
-		_ = atomicWrite(redactionPath(), []byte("# Baseline local redaction rules. Cloud sync exports summaries unless allow_raw_output is true.\n"), 0o600)
-	}
+	_ = ensureRedactionFile()
+	_ = writeBootstrapContract(cfg)
 	if *openclaw {
 		if err := registerOpenClaw(); err != nil {
 			fmt.Fprintf(stderr, "OpenClaw registration failed: %v\n", err)
@@ -146,6 +144,7 @@ func cmdBootstrapDefaults(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	_ = writeBootstrapContract(cfg)
 	preview := bootstrapPreview(cfg)
 	return writeJSON(stdout, stderr, map[string]any{
 		"status":         "defaults_written",
@@ -223,10 +222,36 @@ func cmdBootstrapAccept(args []string, stdout, stderr io.Writer) int {
 	label := fs.String("label", "Good baseline", "Good Baseline label")
 	notes := fs.String("notes", "", "acceptance notes")
 	slotValue := fs.String("slot", "auto", "Good Baseline slot: auto, 1, 2, or 3")
+	confirm := fs.String("confirm", "", "required confirmation: accept <run_id>")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	good, err := acceptCandidateOrRun(fs.Arg(0), *label, *notes, parseSlot(*slotValue), true)
+	runID := fs.Arg(0)
+	if runID == "" {
+		cfg, err := loadConfig()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		db, err := openDB()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		candidate, err := latestBootstrapCandidate(db, scopeKeyForWorkspace(currentWorkspace()), configHash(cfg))
+		db.Close()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		runID = candidate.RunID
+	}
+	want := "accept " + runID
+	if strings.TrimSpace(*confirm) != want {
+		fmt.Fprintf(stderr, "accept requires explicit operator confirmation: --confirm %q\n", want)
+		return 1
+	}
+	good, err := acceptCandidateOrRun(runID, *label, *notes, parseSlot(*slotValue), true)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -314,6 +339,7 @@ func cmdGoodAccept(args []string, stdout, stderr io.Writer, replace bool) int {
 	label := fs.String("label", "Good baseline", "Good Baseline label")
 	notes := fs.String("notes", "", "notes")
 	slotValue := fs.String("slot", "auto", "Good Baseline slot")
+	confirm := fs.String("confirm", "", "required confirmation: accept <run_id> or replace <run_id> slot <n>")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -322,7 +348,20 @@ func cmdGoodAccept(args []string, stdout, stderr io.Writer, replace bool) int {
 		fmt.Fprintln(stderr, "baseline good replace requires --slot 1, 2, or 3")
 		return 2
 	}
-	good, err := acceptCandidateOrRun(fs.Arg(0), *label, *notes, slot, false)
+	runID := fs.Arg(0)
+	if runID == "" {
+		fmt.Fprintln(stderr, "baseline good accept requires RUN_ID and explicit --confirm")
+		return 2
+	}
+	want := "accept " + runID
+	if replace {
+		want = fmt.Sprintf("replace %s slot %d", runID, slot)
+	}
+	if strings.TrimSpace(*confirm) != want {
+		fmt.Fprintf(stderr, "accept requires explicit operator confirmation: --confirm %q\n", want)
+		return 1
+	}
+	good, err := acceptCandidateOrRun(runID, *label, *notes, slot, false)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

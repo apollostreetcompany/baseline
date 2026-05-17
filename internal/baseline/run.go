@@ -40,6 +40,12 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	if opts.AgentCommand != "" {
 		cfg.AgentCommand = opts.AgentCommand
 	}
+	if opts.Mode == "run" || opts.Mode == "setup" {
+		opts.RunAgent = true
+	}
+	if opts.Packs == "" && (opts.Mode == "run" || opts.Mode == "setup") {
+		opts.Packs = cfg.Target.Packs
+	}
 	db, err := openDB()
 	if err != nil {
 		return Run{}, err
@@ -59,10 +65,15 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	state.checkRuntime()
 	state.checkRepo()
 	state.checkOpenClawConfig()
+	state.checkTargetConfig()
 	state.checkScrubber()
 	state.checkBaselineSpeed()
-	if opts.Mode == "full" || opts.Mode == "bootstrap" {
-		state.checkQuestions()
+	if opts.Mode == "full" || opts.Mode == "bootstrap" || opts.Mode == "run" || opts.Mode == "setup" {
+		if state.hasCriticalPreflight() {
+			state.addCheck("questions.runner", "baseline", "agent_eval", "critical", 2, 0, time.Now(), "Agent evaluation was skipped because preflight found a critical target/config issue.", nil)
+		} else {
+			state.checkQuestions()
+		}
 	}
 
 	checks := state.checks
@@ -97,6 +108,7 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		RedactionStatus:    state.redactionStatus(),
 		Checks:             checks,
 		Findings:           findings,
+		Responses:          state.responses,
 	}
 	if err := saveRun(db, run, state.observations); err != nil {
 		return Run{}, err
@@ -142,6 +154,7 @@ type runState struct {
 	checks       []CheckResult
 	observations []Observation
 	probes       []ProbeMessage
+	responses    []ProbeResponse
 	redactions   int
 }
 
@@ -162,6 +175,15 @@ func (s *runState) addCheckWithDuration(checkID, lane, kind, status string, seve
 		Finding:    finding,
 		Metrics:    metrics,
 	})
+}
+
+func (s *runState) hasCriticalPreflight() bool {
+	for _, check := range s.checks {
+		if check.Severity >= 2 && (check.CheckID == "target.config" || check.CheckID == "safety.scrubber") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *runState) observe(key, value, display string) {
@@ -186,6 +208,15 @@ func (s *runState) observeNumber(key string, value float64) {
 
 func (s *runState) checkRuntime() {
 	start := time.Now()
+	if s.cfg.Target.Runtime == "custom" {
+		if strings.TrimSpace(s.cfg.AgentCommand) != "" || strings.TrimSpace(s.opts.AgentCommand) != "" || strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND")) != "" {
+			s.observe("runtime.custom.command", "configured", "configured")
+			s.addCheck("runtime.custom", "core", "environment", "ok", 0, 100, start, "Custom agent command is configured for this Baseline target.", nil)
+			return
+		}
+		s.addCheck("runtime.custom", "core", "environment", "critical", 2, 20, start, "Target runtime is custom, but no agent command is configured.", nil)
+		return
+	}
 	path, err := exec.LookPath("openclaw")
 	if err != nil {
 		s.addCheck("runtime.openclaw", "core", "environment", "warning", 1, 70, start, "OpenClaw binary was not found on PATH.", nil)
@@ -228,6 +259,10 @@ func (s *runState) checkRepo() {
 
 func (s *runState) checkOpenClawConfig() {
 	start := time.Now()
+	if s.cfg.Target.Runtime != "openclaw" {
+		s.addCheck("mcp.openclaw.config", "baseline", "tooling", "ok", 0, 100, start, "OpenClaw MCP registration is not required for target runtime "+s.cfg.Target.Runtime+".", nil)
+		return
+	}
 	cfgPath := filepath.Join(homeDir(), ".openclaw", "openclaw.json")
 	b, err := os.ReadFile(cfgPath)
 	if err != nil {
@@ -248,6 +283,38 @@ func (s *runState) checkOpenClawConfig() {
 		finding = "OpenClaw config includes a baseline MCP registration."
 	}
 	s.addCheck("mcp.openclaw.config", "baseline", "tooling", status, severity, score, start, finding, nil)
+}
+
+func (s *runState) checkTargetConfig() {
+	start := time.Now()
+	target := s.cfg.Target
+	switch target.Runtime {
+	case "openclaw":
+		if _, err := exec.LookPath("openclaw"); err != nil {
+			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target is OpenClaw, but the openclaw binary is not on PATH.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
+			return
+		}
+	case "custom":
+		if strings.TrimSpace(s.cfg.AgentCommand) == "" && strings.TrimSpace(s.opts.AgentCommand) == "" && strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND")) == "" {
+			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target runtime is custom, but no agent command is configured.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
+			return
+		}
+	default:
+		s.addCheck("target.config", "baseline", "configuration", "critical", 2, 10, start, "Target runtime is not understood: "+target.Runtime, nil)
+		return
+	}
+	if target.ModelPolicy == "pinned" && strings.TrimSpace(target.PinnedModel) == "" {
+		s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target model policy is pinned, but no pinned model is configured.", nil)
+		return
+	}
+	if target.ModelPolicy != "follow_current" && target.ModelPolicy != "pinned" {
+		s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target model policy is not understood: "+target.ModelPolicy, nil)
+		return
+	}
+	s.observe("target.runtime", target.Runtime, target.Runtime)
+	s.observe("target.entity", target.Entity, target.Entity)
+	s.observe("target.model_policy", target.ModelPolicy, targetModelDisplay(target))
+	s.addCheck("target.config", "baseline", "configuration", "ok", 0, 100, start, "Baseline target is "+target.Runtime+" "+target.Entity+" using "+targetModelDisplay(target)+".", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
 }
 
 func (s *runState) checkScrubber() {
@@ -275,7 +342,7 @@ func (s *runState) checkBaselineSpeed() {
 func (s *runState) checkQuestions() {
 	questions := selectedQuestions(s.cfg, s.opts.Packs)
 	if !s.opts.RunAgent && os.Getenv("BASELINE_RUN_AGENT") != "1" && s.opts.Mode != "bootstrap" {
-		s.addCheck("questions.runner", "baseline", "agent_eval", "warning", 1, 80, time.Now(), "Question pack was skipped; agent execution requires --run-agent or BASELINE_RUN_AGENT=1.", map[string]float64{"questions": float64(len(questions))})
+		s.addCheck("questions.runner", "baseline", "agent_eval", "warning", 1, 80, time.Now(), "Question pack was skipped; use baseline run for the real eval path, or pass --run-agent to legacy baseline check --full.", map[string]float64{"questions": float64(len(questions))})
 		return
 	}
 	outcomes := s.runQuestionProbes(questions)
@@ -365,12 +432,27 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 	} else {
 		s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
 	}
+	scrubbed, report := scrubText(result.Output)
+	s.redactions += report.SecretsFound + report.PIIFound
+	response := ProbeResponse{
+		PackID:           q.PackID,
+		ProbeID:          q.ID,
+		Dimension:        q.Dimension,
+		Prompt:           q.Prompt,
+		ExpectedBehavior: q.ExpectedBehavior,
+		Output:           result.Output,
+		ScrubbedOutput:   scrubbed,
+		DurationMS:       duration,
+		Status:           "ok",
+	}
 	if outcome.Err != nil {
+		response.Status = "failed"
+		response.Error = outcome.Err.Error()
+		s.responses = append(s.responses, response)
 		s.addCheckWithDuration("question."+q.PackID+"."+q.ID, "baseline", q.Dimension, "critical", 2, 0, duration, "Agent question failed: "+outcome.Err.Error(), map[string]float64{"duration_ms": float64(duration)})
 		return
 	}
-	scrubbed, report := scrubText(result.Output)
-	s.redactions += report.SecretsFound + report.PIIFound
+	s.responses = append(s.responses, response)
 	score, missing := scoreQuestion(scrubbed, q)
 	status := "ok"
 	severity := 0
@@ -422,8 +504,11 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 	if command == "" {
 		command = strings.TrimSpace(s.cfg.AgentCommand)
 	}
+	if command == "" {
+		command = strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND"))
+	}
 	if command != "" {
-		ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)
+		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
 		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+q.Prompt)
@@ -453,7 +538,7 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 	if err != nil {
 		return AgentProbeResult{}, err
 	}
-	return runOpenClawProbe(s.ctx, path, s.runID, q)
+	return runOpenClawProbeWithTarget(s.ctx, path, s.runID, q, s.cfg.Target)
 }
 
 func (s *runState) askAgent(prompt string) (string, error) {
@@ -461,8 +546,11 @@ func (s *runState) askAgent(prompt string) (string, error) {
 	if command == "" {
 		command = strings.TrimSpace(s.cfg.AgentCommand)
 	}
+	if command == "" {
+		command = strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND"))
+	}
 	if command != "" {
-		ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)
+		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
 		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+prompt)
@@ -483,7 +571,7 @@ func (s *runState) askAgent(prompt string) (string, error) {
 }
 
 func (s *runState) agentKind() string {
-	if s.opts.AgentCommand != "" || s.cfg.AgentCommand != "" {
+	if s.opts.AgentCommand != "" || s.cfg.AgentCommand != "" || os.Getenv("BASELINE_AGENT_COMMAND") != "" {
 		return "custom"
 	}
 	if _, err := exec.LookPath("openclaw"); err == nil {
@@ -588,7 +676,9 @@ func suggestedFix(checkID string) string {
 	case strings.Contains(checkID, "mcp.openclaw"):
 		return "Run baseline install openclaw, then openclaw mcp list."
 	case strings.Contains(checkID, "questions.runner"):
-		return "Run baseline check --full --run-agent after confirming agent execution is acceptable."
+		return "Run baseline run. If this is a custom harness, set target.runtime=custom and agent_command, then run baseline doctor."
+	case strings.Contains(checkID, "target.config"):
+		return "Run baseline setup to review target configuration, or set target.model_policy and target.pinned_model explicitly."
 	case strings.Contains(checkID, "safety.scrubber"):
 		return "Keep cloud sync disabled until redaction passes locally."
 	default:

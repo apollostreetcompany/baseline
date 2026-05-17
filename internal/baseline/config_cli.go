@@ -50,6 +50,7 @@ func cmdConfigOverview(stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Baseline config\n")
 	fmt.Fprintf(stdout, "  file: %s\n", configPath())
 	fmt.Fprintf(stdout, "  workspace: %s\n", cfg.WorkspaceName)
+	fmt.Fprintf(stdout, "  target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
 	fmt.Fprintf(stdout, "  cloud_sync: %t\n", cfg.CloudSync)
 	fmt.Fprintf(stdout, "  token_set: %t\n", cfg.APIToken != "")
 	fmt.Fprintf(stdout, "  enabled_packs: %s\n", strings.Join(enabledPackIDs(cfg), ", "))
@@ -273,6 +274,7 @@ func saveConfigMap(m map[string]any) error {
 	if len(cfg.MemorySeeds) == 0 {
 		cfg.MemorySeeds = defaultMemorySeeds()
 	}
+	cfg = normalizeConfig(cfg)
 	return saveConfig(cfg)
 }
 
@@ -302,6 +304,26 @@ func validateConfig(cfg Config) []string {
 	}
 	if cfg.WorkspaceName == "" {
 		issues = append(issues, "workspace_name is missing")
+	}
+	switch cfg.Target.Runtime {
+	case "openclaw", "custom":
+	default:
+		issues = append(issues, "target.runtime must be openclaw or custom")
+	}
+	if cfg.Target.Entity == "" {
+		issues = append(issues, "target.entity is missing")
+	}
+	switch cfg.Target.ModelPolicy {
+	case "follow_current":
+	case "pinned":
+		if strings.TrimSpace(cfg.Target.PinnedModel) == "" {
+			issues = append(issues, "target.model_policy is pinned but target.pinned_model is empty")
+		}
+	default:
+		issues = append(issues, "target.model_policy must be follow_current or pinned")
+	}
+	if cfg.Target.TimeoutSeconds < 30 || cfg.Target.TimeoutSeconds > 900 {
+		issues = append(issues, "target.timeout_seconds must be between 30 and 900")
 	}
 	known := map[string]bool{}
 	for _, pack := range canonicalMonitorPacks(configFacts(cfg)) {

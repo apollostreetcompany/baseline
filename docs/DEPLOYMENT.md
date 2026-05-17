@@ -32,7 +32,7 @@ Commands run:
 
 ```sh
 curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
-./bin/baseline check --fast
+./bin/baseline doctor
 ./bin/baseline sync status
 ./bin/baseline sync push
 curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/runs/latest

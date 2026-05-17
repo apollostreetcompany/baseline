@@ -85,6 +85,40 @@ func TestBootstrapQuestionProbesUseBoundedConcurrency(t *testing.T) {
 	}
 }
 
+func TestRunModeExecutesDefaultTargetAndCapturesResponses(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
+	cfg.AgentCommand = "printf baseline"
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	run, err := RunBaseline(context.Background(), RunOptions{
+		Mode:      "run",
+		Workspace: "test",
+		Packs:     "baseline",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Mode != "run" {
+		t.Fatalf("expected run mode, got %s", run.Mode)
+	}
+	if len(run.Responses) != 14 {
+		t.Fatalf("expected recorded local responses for operator review, got %d", len(run.Responses))
+	}
+	artifacts, err := writeRunArtifacts(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(artifacts.ReportPath); err != nil {
+		t.Fatalf("expected report artifact: %v", err)
+	}
+	if _, err := os.Stat(artifacts.ResponsesPath); err != nil {
+		t.Fatalf("expected responses artifact: %v", err)
+	}
+}
+
 func TestRecordedQuestionCheckUsesProbeDuration(t *testing.T) {
 	state := &runState{runID: "run_duration"}
 	sendAt := time.Now().UTC()

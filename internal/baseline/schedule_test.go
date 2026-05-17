@@ -68,10 +68,11 @@ func TestNextRunAt(t *testing.T) {
 	}
 }
 
-func TestScheduledRunIsFastOnlyAndDoesNotExecuteAgent(t *testing.T) {
+func TestScheduledRunExecutesConfiguredDefaultTarget(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	marker := filepath.Join(t.TempDir(), "agent-ran")
 	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
 	cfg.AgentCommand = "touch " + marker
 	if err := saveConfig(cfg); err != nil {
 		t.Fatal(err)
@@ -83,7 +84,10 @@ func TestScheduledRunIsFastOnlyAndDoesNotExecuteAgent(t *testing.T) {
 	if result.Action != "run" || result.RunID == "" {
 		t.Fatalf("unexpected schedule result: %+v", result)
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatalf("scheduled daily run must stay fast/local and not execute the configured agent")
+	if result.Mode != "run" {
+		t.Fatalf("scheduled daily run must use real eval mode, got %+v", result)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("scheduled daily run should execute the configured target: %v", err)
 	}
 }
