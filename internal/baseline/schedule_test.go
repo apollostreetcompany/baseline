@@ -10,10 +10,16 @@ import (
 )
 
 func TestLaunchdPlistIncludesDailyBaselineRun(t *testing.T) {
-	plist := launchdPlist("/usr/local/bin/baseline", "09:30", "/tmp/baseline.log")
+	plist := launchdPlist("/usr/local/bin/baseline", "09:30", "/tmp/baseline.log", "/Users/future/.openclaw/workspace")
 	for _, want := range []string{
 		"<key>Label</key>",
 		"ai.baseline.daily",
+		"<key>WorkingDirectory</key>",
+		"<string>/Users/future/.openclaw/workspace</string>",
+		"<key>EnvironmentVariables</key>",
+		"<key>BASELINE_WORKSPACE</key>",
+		"<key>PATH</key>",
+		"/opt/homebrew/bin",
 		"<string>/usr/local/bin/baseline</string>",
 		"<string>schedule</string>",
 		"<string>run</string>",
@@ -35,7 +41,11 @@ func TestScheduleStatusReadsLaunchdPlist(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, "Library", "LaunchAgents"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(launchdPlistPath(), []byte(launchdPlist("/tmp/baseline", "07:15", "/tmp/log")), 0o600); err != nil {
+	workspace := filepath.Join(home, ".openclaw", "workspace")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(launchdPlistPath(), []byte(launchdPlist("/tmp/baseline", "07:15", "/tmp/log", workspace)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	status, err := scheduleStatus()
@@ -44,6 +54,9 @@ func TestScheduleStatusReadsLaunchdPlist(t *testing.T) {
 	}
 	if !status.Installed || status.Hour != 7 || status.Minute != 15 {
 		t.Fatalf("unexpected status: %+v", status)
+	}
+	if status.WorkspacePath != workspace {
+		t.Fatalf("expected workspace path %q, got %+v", workspace, status)
 	}
 }
 
@@ -70,9 +83,11 @@ func TestNextRunAt(t *testing.T) {
 
 func TestScheduledRunExecutesConfiguredDefaultTarget(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
+	workspace := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "agent-ran")
 	cfg := defaultConfig()
 	cfg.Target.Runtime = "custom"
+	cfg.WorkspacePath = workspace
 	cfg.AgentCommand = "touch " + marker
 	if err := saveConfig(cfg); err != nil {
 		t.Fatal(err)
@@ -89,5 +104,8 @@ func TestScheduledRunExecutesConfiguredDefaultTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("scheduled daily run should execute the configured target: %v", err)
+	}
+	if result.Workspace != workspace {
+		t.Fatalf("scheduled daily run should use configured workspace, got %+v", result)
 	}
 }

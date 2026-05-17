@@ -256,7 +256,16 @@ func saveProbeMessage(db *sql.DB, msg ProbeMessage) error {
 func latestRun(db *sql.DB) (Run, error) {
 	row := db.QueryRow(`SELECT id, started_at, duration_ms, status, health_score, mode, workspace, scope_key, config_hash, question_set_version, agent_kind, cloud_synced, raw_exported, redaction_status
 		FROM runs
-		ORDER BY CASE WHEN mode IN ('run', 'setup', 'bootstrap', 'full') THEN 0 ELSE 1 END, started_at DESC
+		ORDER BY CASE
+			WHEN mode IN ('run', 'setup', 'bootstrap', 'full') AND EXISTS (
+				SELECT 1 FROM check_results cr
+				WHERE cr.run_id = runs.id
+					AND cr.check_id LIKE 'question.%'
+					AND cr.check_id <> 'questions.runner'
+			) THEN 0
+			WHEN mode IN ('run', 'setup', 'bootstrap', 'full') THEN 1
+			ELSE 2
+		END, started_at DESC
 		LIMIT 1`)
 	return scanRunWithChecks(db, row)
 }

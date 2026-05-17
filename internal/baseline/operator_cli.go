@@ -25,6 +25,9 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprintln(stderr, operatorError("setup.config", err, "Run baseline config validate after fixing config.json."))
 		return 1
 	}
+	if cfg.WorkspacePath == "" {
+		cfg.WorkspacePath = runtimeWorkspace(cfg)
+	}
 	if err := saveConfig(cfg); err != nil {
 		fmt.Fprintln(stderr, operatorError("setup.config_write", err, "Check permissions on "+configPath()+"."))
 		return 1
@@ -88,6 +91,9 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	fmt.Fprintln(stdout, "Baseline setup complete.")
 	fmt.Fprintf(stdout, "Config: %s\n", configPath())
 	fmt.Fprintf(stdout, "Agent bootstrap: %s\n", bootstrapContractPath())
+	if cfg.WorkspacePath != "" {
+		fmt.Fprintf(stdout, "Workspace: %s\n", cfg.WorkspacePath)
+	}
 	fmt.Fprintf(stdout, "Target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
 	printRunSummary(stdout, run)
 	return statusCode(run.Status)
@@ -205,6 +211,9 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Baseline status\n")
 	fmt.Fprintf(stdout, "  config: %s\n", configPath())
 	fmt.Fprintf(stdout, "  agent bootstrap: %s\n", bootstrapContractPath())
+	if cfg.WorkspacePath != "" {
+		fmt.Fprintf(stdout, "  workspace_path: %s\n", cfg.WorkspacePath)
+	}
 	fmt.Fprintf(stdout, "  target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
 	fmt.Fprintf(stdout, "  good_baselines: %d\n", len(status.GoodBaselines))
 	if latest != nil {

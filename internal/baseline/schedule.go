@@ -17,13 +17,14 @@ import (
 const scheduleLabel = "ai.baseline.daily"
 
 type ScheduleStatus struct {
-	Installed bool      `json:"installed"`
-	Label     string    `json:"label"`
-	PlistPath string    `json:"plist_path"`
-	Hour      int       `json:"hour"`
-	Minute    int       `json:"minute"`
-	NextRun   time.Time `json:"next_run,omitempty"`
-	Message   string    `json:"message"`
+	Installed     bool      `json:"installed"`
+	Label         string    `json:"label"`
+	PlistPath     string    `json:"plist_path"`
+	Hour          int       `json:"hour"`
+	Minute        int       `json:"minute"`
+	WorkspacePath string    `json:"workspace_path,omitempty"`
+	NextRun       time.Time `json:"next_run,omitempty"`
+	Message       string    `json:"message"`
 }
 
 type ScheduleRunResult struct {
@@ -35,6 +36,7 @@ type ScheduleRunResult struct {
 	CloudSynced bool   `json:"cloud_synced"`
 	SyncSynced  int    `json:"sync_synced"`
 	SyncFailed  int    `json:"sync_failed"`
+	Workspace   string `json:"workspace,omitempty"`
 	ReportPath  string `json:"report_path,omitempty"`
 }
 
@@ -56,6 +58,20 @@ func installSchedule(exe, at string) (ScheduleStatus, error) {
 	if err != nil {
 		return ScheduleStatus{}, err
 	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return ScheduleStatus{}, err
+	}
+	workspace := runtimeWorkspace(cfg)
+	if workspace == string(os.PathSeparator) {
+		return ScheduleStatus{}, fmt.Errorf("refusing to install schedule with workspace /; run from the intended workspace or set baseline config set workspace_path <path>")
+	}
+	if cfg.WorkspacePath == "" {
+		cfg.WorkspacePath = workspace
+		if err := saveConfig(cfg); err != nil {
+			return ScheduleStatus{}, err
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(launchdPlistPath()), 0o700); err != nil {
 		return ScheduleStatus{}, err
 	}
@@ -63,7 +79,7 @@ func installSchedule(exe, at string) (ScheduleStatus, error) {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 		return ScheduleStatus{}, err
 	}
-	if err := atomicWrite(launchdPlistPath(), []byte(launchdPlist(exe, fmt.Sprintf("%02d:%02d", hour, minute), logPath)), 0o600); err != nil {
+	if err := atomicWrite(launchdPlistPath(), []byte(launchdPlist(exe, fmt.Sprintf("%02d:%02d", hour, minute), logPath, workspace)), 0o600); err != nil {
 		return ScheduleStatus{}, err
 	}
 	_, _ = commandOutput(context.Background(), 5*time.Second, "launchctl", "unload", launchdPlistPath())
@@ -92,11 +108,15 @@ func scheduleStatus() (ScheduleStatus, error) {
 		return status, err
 	}
 	hour, minute := plistHourMinute(string(b))
+	status.WorkspacePath = plistStringAfter(string(b), "WorkingDirectory")
 	status.Installed = true
 	status.Hour = hour
 	status.Minute = minute
 	status.NextRun = nextRunAt(time.Now(), hour, minute)
 	status.Message = fmt.Sprintf("daily schedule installed for %02d:%02d local time", hour, minute)
+	if status.WorkspacePath != "" {
+		status.Message = fmt.Sprintf("daily schedule installed for %02d:%02d local time in %s", hour, minute, status.WorkspacePath)
+	}
 	return status, nil
 }
 
@@ -105,7 +125,8 @@ func runScheduledBaseline(ctx context.Context) (ScheduleRunResult, error) {
 	if err != nil {
 		return ScheduleRunResult{}, err
 	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunAgent: true, Packs: cfg.Target.Packs})
+	workspace := runtimeWorkspace(cfg)
+	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunAgent: true, Packs: cfg.Target.Packs, Workspace: workspace})
 	if err != nil {
 		return ScheduleRunResult{}, err
 	}
@@ -132,6 +153,7 @@ func runScheduledBaseline(ctx context.Context) (ScheduleRunResult, error) {
 		CloudSynced: run.CloudSynced || syncResult.Synced > 0,
 		SyncSynced:  syncResult.Synced,
 		SyncFailed:  syncResult.Failed,
+		Workspace:   workspace,
 		ReportPath:  artifacts.ReportPath,
 	}, nil
 }
@@ -170,14 +192,26 @@ func nextRunAt(now time.Time, hour, minute int) time.Time {
 	return next
 }
 
-func launchdPlist(exe, at, logPath string) string {
+func launchdPlist(exe, at, logPath, workspace string) string {
 	hour, minute, _ := parseScheduleTime(at)
+	workspace = normalizeWorkspacePath(workspace)
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
   <string>` + escapeXML(scheduleLabel) + `</string>
+  <key>WorkingDirectory</key>
+  <string>` + escapeXML(workspace) + `</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BASELINE_WORKSPACE</key>
+    <string>` + escapeXML(workspace) + `</string>
+    <key>HOME</key>
+    <string>` + escapeXML(homeDir()) + `</string>
+    <key>PATH</key>
+    <string>` + escapeXML(launchdPath(exe)) + `</string>
+  </dict>
   <key>ProgramArguments</key>
   <array>
     <string>` + escapeXML(exe) + `</string>
@@ -222,6 +256,46 @@ func plistIntAfter(plist, key string) int {
 	}
 	value, _ := strconv.Atoi(strings.TrimSpace(rest[start+len("<integer>") : end]))
 	return value
+}
+
+func plistStringAfter(plist, key string) string {
+	needle := "<key>" + key + "</key>"
+	idx := strings.Index(plist, needle)
+	if idx < 0 {
+		return ""
+	}
+	rest := plist[idx+len(needle):]
+	start := strings.Index(rest, "<string>")
+	end := strings.Index(rest, "</string>")
+	if start < 0 || end < 0 || end <= start {
+		return ""
+	}
+	return strings.TrimSpace(rest[start+len("<string>") : end])
+}
+
+func launchdPath(exe string) string {
+	parts := []string{
+		filepath.Dir(exe),
+		"/opt/homebrew/bin",
+		"/opt/homebrew/sbin",
+		filepath.Join(homeDir(), "go", "bin"),
+		"/usr/local/bin",
+		"/usr/bin",
+		"/bin",
+		"/usr/sbin",
+		"/sbin",
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || seen[part] {
+			continue
+		}
+		seen[part] = true
+		out = append(out, part)
+	}
+	return strings.Join(out, ":")
 }
 
 func escapeXML(value string) string {

@@ -75,6 +75,7 @@ type Observation struct {
 type Config struct {
 	Version        int                    `json:"version"`
 	WorkspaceName  string                 `json:"workspace_name"`
+	WorkspacePath  string                 `json:"workspace_path,omitempty"`
 	Target         BaselineTarget         `json:"target"`
 	UserFacts      map[string]string      `json:"user_facts"`
 	MemorySeeds    []MemorySeed           `json:"memory_seeds"`

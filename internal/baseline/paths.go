@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func homeDir() string {
@@ -117,6 +118,7 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.WorkspaceName == "" {
 		cfg.WorkspaceName = defaults.WorkspaceName
 	}
+	cfg.WorkspacePath = normalizeWorkspacePath(cfg.WorkspacePath)
 	if cfg.Target.Runtime == "" {
 		cfg.Target.Runtime = defaults.Target.Runtime
 	}
@@ -145,6 +147,38 @@ func normalizeConfig(cfg Config) Config {
 		cfg.APIBaseURL = defaults.APIBaseURL
 	}
 	return cfg
+}
+
+func runtimeWorkspace(cfg Config) string {
+	if value := normalizeWorkspacePath(os.Getenv("BASELINE_WORKSPACE")); value != "" {
+		return value
+	}
+	if value := normalizeWorkspacePath(cfg.WorkspacePath); value != "" {
+		return value
+	}
+	current := normalizeWorkspacePath(currentWorkspace())
+	if current == string(os.PathSeparator) && cfg.Target.Runtime == "openclaw" {
+		openClawWorkspace := filepath.Join(homeDir(), ".openclaw", "workspace")
+		if info, err := os.Stat(openClawWorkspace); err == nil && info.IsDir() {
+			return openClawWorkspace
+		}
+	}
+	return current
+}
+
+func normalizeWorkspacePath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	expanded := value
+	if strings.HasPrefix(expanded, "~/") {
+		expanded = filepath.Join(homeDir(), strings.TrimPrefix(expanded, "~/"))
+	}
+	if abs, err := filepath.Abs(expanded); err == nil {
+		return abs
+	}
+	return filepath.Clean(expanded)
 }
 
 func atomicWrite(path string, data []byte, perm os.FileMode) error {

@@ -12,10 +12,10 @@ import (
 )
 
 func runOpenClawProbe(ctx context.Context, openclawPath, runID string, q Question) (AgentProbeResult, error) {
-	return runOpenClawProbeWithTarget(ctx, openclawPath, runID, q, defaultConfig().Target)
+	return runOpenClawProbeWithTarget(ctx, openclawPath, runID, q, defaultConfig().Target, "")
 }
 
-func runOpenClawProbeWithTarget(ctx context.Context, openclawPath, runID string, q Question, target BaselineTarget) (AgentProbeResult, error) {
+func runOpenClawProbeWithTarget(ctx context.Context, openclawPath, runID string, q Question, target BaselineTarget, workspace string) (AgentProbeResult, error) {
 	sessionID := openClawProbeSessionID(runID, q)
 	agentTimeout := openClawAgentTimeoutSeconds(target)
 	args := []string{"agent", "--json", "--session-id", sessionID, "--message", q.Prompt, "--timeout", strconv.Itoa(agentTimeout)}
@@ -38,6 +38,11 @@ func runOpenClawProbeWithTarget(ctx context.Context, openclawPath, runID string,
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(agentTimeout+30)*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, openclawPath, args...)
+	if workspace = normalizeWorkspacePath(workspace); workspace != "" {
+		if info, err := os.Stat(workspace); err == nil && info.IsDir() {
+			cmd.Dir = workspace
+		}
+	}
 	stdoutFile, stdoutErr := os.CreateTemp("", "baseline-openclaw-stdout-*")
 	if stdoutErr != nil {
 		return AgentProbeResult{}, stdoutErr

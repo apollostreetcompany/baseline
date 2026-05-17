@@ -195,6 +195,9 @@ func mcpSetup(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.WorkspacePath == "" {
+		cfg.WorkspacePath = runtimeWorkspace(cfg)
+	}
 	if err := saveConfig(cfg); err != nil {
 		return nil, err
 	}

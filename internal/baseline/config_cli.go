@@ -50,6 +50,9 @@ func cmdConfigOverview(stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Baseline config\n")
 	fmt.Fprintf(stdout, "  file: %s\n", configPath())
 	fmt.Fprintf(stdout, "  workspace: %s\n", cfg.WorkspaceName)
+	if cfg.WorkspacePath != "" {
+		fmt.Fprintf(stdout, "  workspace_path: %s\n", cfg.WorkspacePath)
+	}
 	fmt.Fprintf(stdout, "  target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
 	fmt.Fprintf(stdout, "  cloud_sync: %t\n", cfg.CloudSync)
 	fmt.Fprintf(stdout, "  token_set: %t\n", cfg.APIToken != "")
@@ -304,6 +307,14 @@ func validateConfig(cfg Config) []string {
 	}
 	if cfg.WorkspaceName == "" {
 		issues = append(issues, "workspace_name is missing")
+	}
+	if cfg.WorkspacePath != "" {
+		info, err := os.Stat(cfg.WorkspacePath)
+		if err != nil {
+			issues = append(issues, "workspace_path is not readable: "+cfg.WorkspacePath)
+		} else if !info.IsDir() {
+			issues = append(issues, "workspace_path is not a directory: "+cfg.WorkspacePath)
+		}
 	}
 	switch cfg.Target.Runtime {
 	case "openclaw", "custom":

@@ -292,3 +292,50 @@ func TestLatestRunPrefersRealEvalOverNewerDoctorStyleRows(t *testing.T) {
 		t.Fatalf("expected latest meaningful eval %s, got %s", eval.ID, latest.ID)
 	}
 }
+
+func TestLatestRunPrefersCompletedEvalOverNewerPreflightOnlyRun(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	db, err := openDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	eval := Run{
+		ID:              "run_eval",
+		Mode:            "run",
+		StartedAt:       time.Now().Add(-1 * time.Minute),
+		Status:          "warning",
+		HealthScore:     92,
+		Workspace:       "test",
+		AgentKind:       "openclaw",
+		RedactionStatus: "clean",
+		Checks:          []CheckResult{{ID: "eval_check", CheckID: "question.baseline.workspace", Lane: "baseline", Kind: "repo_awareness", Status: "ok", Score: 100}},
+	}
+	if err := saveRun(db, eval, nil); err != nil {
+		t.Fatal(err)
+	}
+	preflightOnly := Run{
+		ID:              "run_preflight",
+		Mode:            "run",
+		StartedAt:       time.Now(),
+		Status:          "critical",
+		HealthScore:     13,
+		Workspace:       "/",
+		AgentKind:       "unknown",
+		RedactionStatus: "clean",
+		Checks: []CheckResult{
+			{ID: "preflight_runtime", CheckID: "runtime.openclaw", Lane: "core", Kind: "environment", Status: "warning", Severity: 1, Score: 70},
+			{ID: "preflight_skip", CheckID: "questions.runner", Lane: "baseline", Kind: "agent_eval", Status: "critical", Severity: 2, Score: 0},
+		},
+	}
+	if err := saveRun(db, preflightOnly, nil); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := latestRun(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != eval.ID {
+		t.Fatalf("expected completed eval %s, got %s", eval.ID, latest.ID)
+	}
+}

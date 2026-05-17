@@ -32,13 +32,14 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	if opts.Mode == "" {
 		opts.Mode = "fast"
 	}
-	if opts.Workspace == "" {
-		opts.Workspace = currentWorkspace()
-	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return Run{}, err
 	}
+	if opts.Workspace == "" {
+		opts.Workspace = runtimeWorkspace(cfg)
+	}
+	opts.Workspace = normalizeWorkspacePath(opts.Workspace)
 	if opts.AgentCommand != "" {
 		cfg.AgentCommand = opts.AgentCommand
 	}
@@ -246,13 +247,18 @@ func (s *runState) checkRuntime() {
 
 func (s *runState) checkRepo() {
 	start := time.Now()
-	root, err := commandOutput(s.ctx, 4*time.Second, "git", "rev-parse", "--show-toplevel")
+	workspace := s.commandDir()
+	if workspace == "" {
+		s.addCheck("repo.state", "baseline", "awareness", "warning", 1, 75, start, "Configured workspace is not a readable directory: "+s.opts.Workspace, nil)
+		return
+	}
+	root, err := commandOutput(s.ctx, 4*time.Second, "git", "-C", workspace, "rev-parse", "--show-toplevel")
 	if err != nil {
 		s.addCheck("repo.state", "baseline", "awareness", "warning", 1, 75, start, "Workspace is not a git repo or git is unavailable.", nil)
 		return
 	}
-	branch, _ := commandOutput(s.ctx, 4*time.Second, "git", "branch", "--show-current")
-	status, _ := commandOutput(s.ctx, 4*time.Second, "git", "status", "--porcelain")
+	branch, _ := commandOutput(s.ctx, 4*time.Second, "git", "-C", workspace, "branch", "--show-current")
+	status, _ := commandOutput(s.ctx, 4*time.Second, "git", "-C", workspace, "status", "--porcelain")
 	dirty := 0
 	for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
 		if strings.TrimSpace(line) != "" {
@@ -522,6 +528,7 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		cmd.Dir = s.commandDir()
 		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+q.Prompt)
 		sendAt := time.Now().UTC()
 		out, err := cmd.CombinedOutput()
@@ -549,7 +556,7 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 	if err != nil {
 		return AgentProbeResult{}, err
 	}
-	return runOpenClawProbeWithTarget(s.ctx, path, s.runID, q, s.cfg.Target)
+	return runOpenClawProbeWithTarget(s.ctx, path, s.runID, q, s.cfg.Target, s.commandDir())
 }
 
 func (s *runState) askAgent(prompt string) (string, error) {
@@ -564,6 +571,7 @@ func (s *runState) askAgent(prompt string) (string, error) {
 		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		cmd.Dir = s.commandDir()
 		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+prompt)
 		out, err := cmd.CombinedOutput()
 		if ctx.Err() == context.DeadlineExceeded {
@@ -589,6 +597,18 @@ func (s *runState) agentKind() string {
 		return "openclaw"
 	}
 	return "unknown"
+}
+
+func (s *runState) commandDir() string {
+	workspace := normalizeWorkspacePath(s.opts.Workspace)
+	if workspace == "" {
+		return ""
+	}
+	info, err := os.Stat(workspace)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return workspace
 }
 
 func (s *runState) redactionStatus() string {
