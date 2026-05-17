@@ -248,3 +248,47 @@ func TestCloudPayloadDoesNotExposeRawWorkspacePath(t *testing.T) {
 		t.Fatalf("cloud payload should expose a display hash, got %s", body)
 	}
 }
+
+func TestLatestRunPrefersRealEvalOverNewerDoctorStyleRows(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	db, err := openDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	eval := Run{
+		ID:              "run_eval",
+		Mode:            "run",
+		StartedAt:       time.Now().Add(-1 * time.Minute),
+		Status:          "warning",
+		HealthScore:     92,
+		Workspace:       "test",
+		AgentKind:       "openclaw",
+		RedactionStatus: "clean",
+		Checks:          []CheckResult{{ID: "eval_check", CheckID: "question.baseline.math", Lane: "baseline", Kind: "basic_reasoning", Status: "ok", Score: 100}},
+	}
+	if err := saveRun(db, eval, nil); err != nil {
+		t.Fatal(err)
+	}
+	fast := Run{
+		ID:              "run_fast",
+		Mode:            "fast",
+		StartedAt:       time.Now(),
+		Status:          "ok",
+		HealthScore:     100,
+		Workspace:       "test",
+		AgentKind:       "openclaw",
+		RedactionStatus: "clean",
+		Checks:          []CheckResult{{ID: "fast_check", CheckID: "runtime.openclaw", Lane: "core", Kind: "environment", Status: "ok", Score: 100}},
+	}
+	if err := saveRun(db, fast, nil); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := latestRun(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != eval.ID {
+		t.Fatalf("expected latest meaningful eval %s, got %s", eval.ID, latest.ID)
+	}
+}

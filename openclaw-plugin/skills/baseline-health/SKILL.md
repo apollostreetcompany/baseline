@@ -6,9 +6,9 @@ check, Good Baseline acceptance, or drift comparison through Baseline.
 ## Workflow
 
 1. Setup first with the CLI: `baseline setup` (or `baseline setup --register-openclaw` if the operator wants this agent to register the MCP server).
-2. Prefer `baseline_setup` for first run, or CLI `baseline setup`. It writes Baseline-owned setup files, runs the real default target eval, and returns report paths.
-3. For later runs, call `baseline_run`. Baseline sends real OpenClaw messages, records send/receive timestamps, and writes `REPORT.md` plus `RESPONSES.md`.
-4. Call `baseline_report` and show the operator the markdown report and responses before asking for accept/reject/defer.
+2. Prefer `baseline_setup` for first run, or CLI `baseline setup`. MCP setup starts the real default target eval in the background and returns `run_status.run_id`.
+3. For later MCP runs, call `baseline_run`; it returns quickly with `run_status.run_id` while the eval continues. Poll `baseline_report` for that run id until it returns the completed report/responses.
+4. Show the operator the markdown report and responses before asking for accept/reject/defer.
 5. Accept a Good Baseline only after the user explicitly approves the run: `baseline_accept` with `confirm: "accept <RUN_ID>"`, or CLI `baseline accept <RUN_ID> --confirm "accept <RUN_ID>"`.
 6. Keep at most three active Good Baselines. If the user wants a fourth, ask which slot to replace.
 7. Later, call `baseline_report` to inspect drift from the latest accepted Good Baseline.
@@ -17,7 +17,7 @@ check, Good Baseline acceptance, or drift comparison through Baseline.
 
 1. Run `baseline_schedule` with `action: "status"` to verify daily self-checks.
 2. If the user asks to install the daily check, run `baseline_schedule` with `action: "install"` and an `at` time like `09:00`.
-3. If the user asks to trigger the scheduled check now, run `baseline_schedule` with `action: "run"`. This runs the configured default eval, not a fake local-only probe.
+3. If the user asks to trigger the scheduled check now, run `baseline_schedule` with `action: "run"`. Through MCP this starts the configured default eval in the background, not a fake local-only probe.
 
 Safety notes:
 

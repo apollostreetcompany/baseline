@@ -5,9 +5,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -214,24 +216,21 @@ func mcpSetup(args map[string]any) (any, error) {
 		}
 		openClawRegistered = true
 	}
-	packs := stringArg(args, "packs", cfg.Target.Packs)
-	run, err := RunBaseline(context.Background(), RunOptions{Mode: "setup", RunAgent: true, AgentCommand: stringArg(args, "agent_command", ""), Packs: packs})
+	status, err := startAsyncMCPRun("setup", args, cfg.Target.Packs)
 	if err != nil {
 		return nil, err
 	}
-	artifacts, _ := writeRunArtifacts(run)
-	run.Artifacts = artifacts
 	return map[string]any{
-		"status":              "setup_complete",
+		"status":              "setup_started",
 		"config_path":         configPath(),
 		"bootstrap_contract":  bootstrapContractPath(),
 		"openclaw_registered": openClawRegistered,
 		"target":              cfg.Target,
-		"run":                 run,
+		"run_status":          status,
 		"next_actions": []string{
-			"Show the operator the report and responses",
-			fmt.Sprintf("Ask whether to accept with confirm: accept %s", run.ID),
-			fmt.Sprintf("If accepted, call baseline_accept run_id=%s confirm=%q", run.ID, "accept "+run.ID),
+			"Tell the operator the Baseline eval started in the background",
+			fmt.Sprintf("Poll with baseline_report run_id=%s until state is completed", status.RunID),
+			fmt.Sprintf("If accepted after review, call baseline_accept run_id=%s confirm=%q", status.RunID, "accept "+status.RunID),
 		},
 	}, nil
 }
@@ -241,24 +240,88 @@ func mcpRun(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	packs := stringArg(args, "packs", cfg.Target.Packs)
-	run, err := RunBaseline(context.Background(), RunOptions{Mode: "run", RunAgent: true, AgentCommand: stringArg(args, "agent_command", ""), Packs: packs})
+	status, err := startAsyncMCPRun("run", args, cfg.Target.Packs)
 	if err != nil {
 		return nil, err
 	}
-	artifacts, _ := writeRunArtifacts(run)
-	run.Artifacts = artifacts
 	return map[string]any{
-		"run": run,
+		"run_status": status,
 		"next_actions": []string{
-			fmt.Sprintf("Call baseline_report run_id=%s and show the operator REPORT.md plus RESPONSES.md", run.ID),
-			fmt.Sprintf("Accept only after operator says yes: baseline_accept run_id=%s confirm=%q", run.ID, "accept "+run.ID),
+			fmt.Sprintf("Poll with baseline_report run_id=%s until state is completed", status.RunID),
+			"Show the operator REPORT.md plus RESPONSES.md when complete",
+			fmt.Sprintf("Accept only after operator says yes: baseline_accept run_id=%s confirm=%q", status.RunID, "accept "+status.RunID),
 		},
 	}, nil
 }
 
+func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (RunLifecycleStatus, error) {
+	runID := newRunID()
+	if err := ensureDirs(); err != nil {
+		return RunLifecycleStatus{}, err
+	}
+	stdoutPath, stderrPath := runLifecycleLogPaths(runID)
+	stdoutFile, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return RunLifecycleStatus{}, err
+	}
+	defer stdoutFile.Close()
+	stderrFile, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return RunLifecycleStatus{}, err
+	}
+	defer stderrFile.Close()
+	exe := strings.TrimSpace(os.Getenv("BASELINE_ASYNC_EXE"))
+	if exe == "" {
+		var err error
+		exe, err = os.Executable()
+		if err != nil {
+			exe, err = exec.LookPath("baseline")
+			if err != nil {
+				return RunLifecycleStatus{}, err
+			}
+		}
+	}
+	cmdArgs := []string{mode, "--run-id", runID}
+	if packs := stringArg(args, "packs", defaultPacks); packs != "" {
+		cmdArgs = append(cmdArgs, "--packs", packs)
+	}
+	if agentCommand := stringArg(args, "agent_command", ""); agentCommand != "" {
+		cmdArgs = append(cmdArgs, "--agent-command", agentCommand)
+	}
+	cmd := exec.Command(exe, cmdArgs...)
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
+	cmd.Env = os.Environ()
+	if err := cmd.Start(); err != nil {
+		return RunLifecycleStatus{}, err
+	}
+	status := startedRunStatus(runID, mode)
+	status.PID = cmd.Process.Pid
+	status.StdoutPath = stdoutPath
+	status.StderrPath = stderrPath
+	if err := writeRunLifecycleStatus(status); err != nil {
+		return RunLifecycleStatus{}, err
+	}
+	go func() {
+		err := cmd.Wait()
+		if err == nil {
+			return
+		}
+		current, readErr := readRunLifecycleStatus(runID)
+		if readErr == nil && current.State != "running" {
+			return
+		}
+		failed := failedRunStatus(runID, mode, err)
+		failed.PID = status.PID
+		failed.StdoutPath = stdoutPath
+		failed.StderrPath = stderrPath
+		_ = writeRunLifecycleStatus(failed)
+	}()
+	return status, nil
+}
+
 func mcpDoctor() (any, error) {
-	run, err := RunBaseline(context.Background(), RunOptions{Mode: "fast"})
+	run, err := RunBaseline(context.Background(), RunOptions{Mode: "doctor", Ephemeral: true})
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +405,11 @@ func mcpSchedule(args map[string]any) (any, error) {
 	case "remove":
 		return removeSchedule()
 	case "run":
-		return runScheduledBaseline(context.Background())
+		cfg, err := loadConfig()
+		if err != nil {
+			return nil, err
+		}
+		return startAsyncMCPRun("run", args, cfg.Target.Packs)
 	default:
 		return nil, fmt.Errorf("unknown schedule action %s", action)
 	}
@@ -484,6 +551,18 @@ func mcpReport(runID string) (any, error) {
 			run, err = latestRun(db)
 		} else {
 			run, err = runByID(db, runID)
+		}
+		if errors.Is(err, sql.ErrNoRows) && runID != "" {
+			status, statusErr := readRunLifecycleStatus(runID)
+			if statusErr == nil {
+				return map[string]any{
+					"run_status": status,
+					"next_actions": []string{
+						"If state is running, wait and call baseline_report again",
+						"If state is failed, read stderr_path and run baseline_doctor",
+					},
+				}, nil
+			}
 		}
 		if err != nil {
 			return nil, err

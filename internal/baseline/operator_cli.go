@@ -16,6 +16,7 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	registerOpenClawFlag := fs.Bool("register-openclaw", false, "also register Baseline as an OpenClaw MCP server")
 	agentCommand := fs.String("agent-command", "", "advanced: override configured target command for this setup run")
 	packs := fs.String("packs", "", "advanced: baseline, enabled, all, or comma-separated pack ids")
+	runID := fs.String("run-id", "", "internal: preassigned run id")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -53,13 +54,20 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if *packs == "" {
 		*packs = cfg.Target.Packs
 	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: "setup", RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
+	assignedRunID := strings.TrimSpace(*runID)
+	if assignedRunID == "" {
+		assignedRunID = newRunID()
+	}
+	_ = writeRunLifecycleStatus(startedRunStatus(assignedRunID, "setup"))
+	run, err := RunBaseline(ctx, RunOptions{Mode: "setup", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
 	if err != nil {
+		_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "setup", err))
 		fmt.Fprintln(stderr, operatorError("setup.eval", err, "Run baseline doctor, fix the reported target/config issue, then run baseline run."))
 		return 1
 	}
 	artifacts, _ := writeRunArtifacts(run)
 	run.Artifacts = artifacts
+	_ = writeRunLifecycleStatus(completedRunStatus(run))
 	payload := map[string]any{
 		"status":              "setup_complete",
 		"config_path":         configPath(),
@@ -91,6 +99,7 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	jsonOut := fs.Bool("json", false, "print JSON")
 	agentCommand := fs.String("agent-command", "", "advanced: override configured target command for this run")
 	packs := fs.String("packs", "", "advanced: baseline, enabled, all, or comma-separated pack ids")
+	runID := fs.String("run-id", "", "internal: preassigned run id")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -102,13 +111,20 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if *packs == "" {
 		*packs = cfg.Target.Packs
 	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
+	assignedRunID := strings.TrimSpace(*runID)
+	if assignedRunID == "" {
+		assignedRunID = newRunID()
+	}
+	_ = writeRunLifecycleStatus(startedRunStatus(assignedRunID, "run"))
+	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
 	if err != nil {
+		_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "run", err))
 		fmt.Fprintln(stderr, operatorError("run.eval", err, "Run baseline doctor, fix the reported target/config issue, then run baseline run again."))
 		return 1
 	}
 	artifacts, _ := writeRunArtifacts(run)
 	run.Artifacts = artifacts
+	_ = writeRunLifecycleStatus(completedRunStatus(run))
 	if *jsonOut {
 		return writeJSON(stdout, stderr, run)
 	}

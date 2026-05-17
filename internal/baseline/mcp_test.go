@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -24,19 +25,43 @@ func TestMCPToolsListIsSmallAndIncludesCoreTools(t *testing.T) {
 
 func TestMCPScheduleRunTriggersConfiguredEval(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
-	cfg := defaultConfig()
-	cfg.Target.Runtime = "custom"
-	cfg.AgentCommand = "printf baseline"
-	if err := saveConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("BASELINE_ASYNC_EXE", "/bin/echo")
 	payload, err := callMCPTool("baseline_schedule", map[string]any{"action": "run"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := mcpText(t, payload)
-	if !strings.Contains(text, `"action": "run"`) || !strings.Contains(text, `"run_id":`) || !strings.Contains(text, `"mode": "run"`) {
+	if !strings.Contains(text, `"state": "running"`) || !strings.Contains(text, `"run_id":`) || !strings.Contains(text, `"mode": "run"`) {
 		t.Fatalf("expected schedule run payload, got %s", text)
+	}
+}
+
+func TestMCPRunStartsAsyncAndReportCanSeeRunningStatus(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	t.Setenv("BASELINE_ASYNC_EXE", "/bin/echo")
+	payload, err := callMCPTool("baseline_run", map[string]any{"packs": "baseline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := mcpText(t, payload)
+	if !strings.Contains(text, `"state": "running"`) {
+		t.Fatalf("expected async running payload, got %s", text)
+	}
+	var envelope struct {
+		RunStatus struct {
+			RunID string `json:"run_id"`
+		} `json:"run_status"`
+	}
+	if err := json.Unmarshal([]byte(text), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	reportPayload, err := callMCPTool("baseline_report", map[string]any{"run_id": envelope.RunStatus.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportText := mcpText(t, reportPayload)
+	if !strings.Contains(reportText, `"run_status"`) {
+		t.Fatalf("expected report to return lifecycle status, got %s", reportText)
 	}
 }
 

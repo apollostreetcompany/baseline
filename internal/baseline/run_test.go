@@ -2,6 +2,8 @@ package baseline
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +118,25 @@ func TestRunModeExecutesDefaultTargetAndCapturesResponses(t *testing.T) {
 	}
 	if _, err := os.Stat(artifacts.ResponsesPath); err != nil {
 		t.Fatalf("expected responses artifact: %v", err)
+	}
+}
+
+func TestDoctorModeIsEphemeral(t *testing.T) {
+	t.Setenv("BASELINE_HOME", t.TempDir())
+	run, err := RunBaseline(context.Background(), RunOptions{Mode: "doctor", Ephemeral: true, Workspace: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ID == "" || len(run.Checks) == 0 {
+		t.Fatalf("expected doctor checks without persistence, got %+v", run)
+	}
+	db, err := openDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := latestRun(db); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("doctor should not persist latest run, got err=%v", err)
 	}
 }
 

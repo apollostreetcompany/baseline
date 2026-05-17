@@ -133,7 +133,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./b
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_schedule","arguments":{"action":"run"}}}' | ./bin/baseline serve mcp
 ```
 
-MCP errors return structured recovery hints and `next_actions`. Agents should run `baseline_setup` once, then `baseline_run`, `baseline_report`, and only call `baseline_accept` after showing the operator the markdown report plus local responses and receiving explicit confirmation.
+MCP errors return structured recovery hints and `next_actions`. `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return a `run_status` with a `run_id`; agents should poll `baseline_report` with that run id until it returns the completed report/responses. Only call `baseline_accept` after showing the operator the markdown report plus local responses and receiving explicit confirmation.
 
 ## Daily Schedule
 

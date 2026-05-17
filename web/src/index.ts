@@ -667,7 +667,7 @@ openclaw mcp list
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
       <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. Doctor is local preflight; setup and run execute the operator-approved default target and write local markdown artifacts.</p>
+      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. Doctor is local preflight; setup and run start the operator-approved default eval in the background and write local markdown artifacts.</p>
       <pre><code>${escapeHTML(install)}</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN

@@ -447,7 +447,7 @@ func cmdScrub(args []string, stdout, stderr io.Writer) int {
 func cmdDoctor(ctx context.Context, stdout, stderr io.Writer) int {
 	cfg, _ := loadConfig()
 	_, openClawErr := exec.LookPath("openclaw")
-	run, err := RunBaseline(ctx, RunOptions{Mode: "fast"})
+	run, err := RunBaseline(ctx, RunOptions{Mode: "doctor", Ephemeral: true})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

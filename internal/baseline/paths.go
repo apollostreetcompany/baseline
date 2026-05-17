@@ -47,7 +47,7 @@ func bootstrapContractPath() string {
 }
 
 func ensureDirs() error {
-	for _, dir := range []string{baseDir(), filepath.Join(baseDir(), "reports"), filepath.Join(baseDir(), "raw")} {
+	for _, dir := range []string{baseDir(), filepath.Join(baseDir(), "reports"), filepath.Join(baseDir(), "raw"), runLifecycleDir()} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}

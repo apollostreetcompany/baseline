@@ -20,10 +20,12 @@ import (
 
 type RunOptions struct {
 	Mode         string
+	RunID        string
 	RunAgent     bool
 	AgentCommand string
 	Workspace    string
 	Packs        string
+	Ephemeral    bool
 }
 
 func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
@@ -58,7 +60,7 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		db:           db,
 		cfg:          cfg,
 		opts:         opts,
-		runID:        newRunID(),
+		runID:        runIDForOptions(opts),
 		started:      start,
 		observations: make([]Observation, 0, 24),
 	}
@@ -110,38 +112,47 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		Findings:           findings,
 		Responses:          state.responses,
 	}
-	if err := saveRun(db, run, state.observations); err != nil {
-		return Run{}, err
-	}
-	for _, probe := range state.probes {
-		if err := saveProbeMessage(db, probe); err != nil {
+	if !opts.Ephemeral {
+		if err := saveRun(db, run, state.observations); err != nil {
 			return Run{}, err
 		}
-	}
-	if cfg.CloudSync && cfg.APIToken != "" {
-		if err := stageSyncPayload(db, run); err != nil {
-			return Run{}, err
+		for _, probe := range state.probes {
+			if err := saveProbeMessage(db, probe); err != nil {
+				return Run{}, err
+			}
 		}
-		result, err := flushSyncOutbox(ctx, db, cfg)
-		if err == nil && result.Synced > 0 {
-			run.CloudSynced = true
-		} else if err != nil {
-			run.Findings = append(run.Findings, Finding{
-				Severity: "warning",
-				CheckID:  "cloud.sync",
-				Message:  "Cloud sync failed: " + err.Error(),
-				Fix:      "Run baseline sync status and verify the API token.",
-			})
-		} else {
-			run.Findings = append(run.Findings, Finding{
-				Severity: "warning",
-				CheckID:  "cloud.sync",
-				Message:  "Cloud sync did not upload any queued runs.",
-				Fix:      "Run baseline sync status and verify the API token.",
-			})
+		if cfg.CloudSync && cfg.APIToken != "" {
+			if err := stageSyncPayload(db, run); err != nil {
+				return Run{}, err
+			}
+			result, err := flushSyncOutbox(ctx, db, cfg)
+			if err == nil && result.Synced > 0 {
+				run.CloudSynced = true
+			} else if err != nil {
+				run.Findings = append(run.Findings, Finding{
+					Severity: "warning",
+					CheckID:  "cloud.sync",
+					Message:  "Cloud sync failed: " + err.Error(),
+					Fix:      "Run baseline sync status and verify the API token.",
+				})
+			} else {
+				run.Findings = append(run.Findings, Finding{
+					Severity: "warning",
+					CheckID:  "cloud.sync",
+					Message:  "Cloud sync did not upload any queued runs.",
+					Fix:      "Run baseline sync status and verify the API token.",
+				})
+			}
 		}
 	}
 	return run, nil
+}
+
+func runIDForOptions(opts RunOptions) string {
+	if strings.TrimSpace(opts.RunID) != "" {
+		return strings.TrimSpace(opts.RunID)
+	}
+	return newRunID()
 }
 
 type runState struct {
@@ -804,7 +815,8 @@ func syncCloudPayload(ctx context.Context, cfg Config, body []byte) error {
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", "Bearer "+cfg.APIToken)
 	req.Header.Set("user-agent", "baseline-cli/"+runtime.GOOS)
-	resp, err := http.DefaultClient.Do(req)
+	client := http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

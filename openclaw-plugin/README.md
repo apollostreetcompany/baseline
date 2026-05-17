@@ -33,6 +33,8 @@ Then run `baseline run` and `baseline compare` any time you want to check drift 
 
 `baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
 
+Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete.
+
 Manual MCP registry fallback:
 
 ```sh

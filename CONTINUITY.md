@@ -43,15 +43,17 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 13: Added daily launchd self-check schedule and OpenClaw-triggerable `baseline_schedule` MCP tool
 - [x] Bead 14: Launched and hardened v0.1 bootstrap/Good Baseline flow with updated 14-question Baseline Core, preview-before-run receipts, scoped Good Baseline slots, bounded real OpenClaw send/receive timing, fresh-only token metadata, OpenClaw-style config CLI, updated MCP tools, local binary install, and deployed Worker docs/question set
 - [x] Bead 15: Added operator-first Baseline setup/run/report/accept UX, local response artifacts, agent BOOTSTRAP.md contract, default target config, real scheduled evals, structured MCP recovery errors, and seven workflow-first MCP tools.
+- [x] Bead 16: Fixed first-run lifecycle issues by making doctor/preflight ephemeral, making latest/status prefer real eval runs over local preflight rows, adding async MCP setup/run/schedule execution with run status files, and adding a bounded cloud sync HTTP timeout.
 
 ### Now
-- Bead 15 operator UX complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
+- Bead 16 lifecycle hardening complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` remains installed for 09:00 local time, and the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
 - Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
-- Local smoke with a custom agent command produced `run_dil097okvm8w`, wrote markdown report/response artifacts, and demonstrated operator-facing warnings for low-quality probe answers.
+- First real OpenClaw eval `run_dil295nlwpug` completed with status warning, health 92, 14 Baseline Core probes, and one slow `ops_change` warning at 95026ms. `baseline latest` and `baseline status` now point back to this real eval even after doctor runs.
+- MCP `baseline_run`, `baseline_setup`, and `baseline_schedule action=run` now return quickly with a lifecycle `run_status.run_id`; agents should poll `baseline_report` for completion instead of holding the MCP call open for the whole eval.
 
 ### Next
-- Bead 16: Split dogfood admin token from ingest token before external pilot.
-- Bead 17: Stripe entitlement or API token/workspace model, depending on available credentials.
+- Bead 17: Split dogfood admin token from ingest token before external pilot.
+- Bead 18: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
