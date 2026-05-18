@@ -22,6 +22,8 @@ check, Good Baseline acceptance, or drift comparison through Baseline.
 Safety notes:
 
 - `baseline_doctor` is read-only preflight and does not create a Good Baseline candidate.
+- `baseline_setup` and `baseline install openclaw` ensure OpenClaw Codex app-server request and turn-idle timeouts are at least 900 seconds. If logs show `idleMs=60007`, `timeoutMs=60000`, or `turn_completion_idle_timeout`, report that as the OpenClaw Codex idle watchdog and start a fresh run after setup.
+- `401 Unauthorized` with `__OPENCLAW_REDACTED__` in ACP child Codex streams or memory search is an auth/env config failure, not a true timeout. Do not remove Google/Gemini search or background API configuration to fix it.
 - `baseline_run` should use real OpenClaw session metadata when available; do not invent token or cost numbers.
 - Daily schedule runs the configured default target eval.
 - Do not call retired `baseline_mark_known_good`. Use `baseline_accept` only after explicit user approval.

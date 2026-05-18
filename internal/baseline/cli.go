@@ -383,7 +383,13 @@ func cmdInstall(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	timeoutStatus, err := ensureOpenClawCodexTimeout()
+	if err != nil {
+		fmt.Fprintln(stderr, operatorError("install.openclaw_codex_timeout", err, "Fix ~/.openclaw/openclaw.json, then rerun baseline install openclaw."))
+		return 1
+	}
 	fmt.Fprintln(stdout, "Registered Baseline MCP with OpenClaw.")
+	printOpenClawCodexTimeoutStatus(stdout, timeoutStatus)
 	fmt.Fprintln(stdout, "Verify with: openclaw mcp list")
 	return 0
 }

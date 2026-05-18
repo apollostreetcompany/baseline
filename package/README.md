@@ -24,7 +24,7 @@ baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
 
-Use `baseline doctor` when you only want read-only runtime/repo/MCP/config preflight and do not want to send OpenClaw probe messages. `baseline run` and `baseline setup` send real probe messages to the configured default target, write markdown artifacts, and require operator confirmation before accepting.
+Use `baseline doctor` when you only want read-only runtime/repo/MCP/config preflight and do not want to send OpenClaw probe messages. `baseline run` and `baseline setup` send real probe messages to the configured default target, write markdown artifacts, and require operator confirmation before accepting. For OpenClaw targets, setup snapshots `~/.openclaw/openclaw.json` and ensures Codex app-server request and turn-idle timeouts are at least 900 seconds.
 
 For local development from this repository:
 
@@ -47,4 +47,4 @@ baseline config set api_token <token>
 baseline schedule install --at 09:00
 ```
 
-`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility.
+`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility. If OpenClaw logs show `turn_completion_idle_timeout` around 60 seconds, rerun `baseline setup` or `baseline install openclaw`; if logs show `__OPENCLAW_REDACTED__` with `401 Unauthorized`, treat it as child env/auth configuration rather than a timeout.

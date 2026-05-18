@@ -49,6 +49,14 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprintln(stderr, operatorError("setup.bootstrap_contract", err, "Check permissions on "+bootstrapContractPath()+"."))
 		return 1
 	}
+	openClawCodexTimeout := OpenClawCodexTimeoutStatus{}
+	if cfg.Target.Runtime == "openclaw" {
+		openClawCodexTimeout, err = ensureOpenClawCodexTimeout()
+		if err != nil {
+			fmt.Fprintln(stderr, operatorError("setup.openclaw_codex_timeout", err, "Fix ~/.openclaw/openclaw.json or ask the operator before changing OpenClaw gateway config."))
+			return 1
+		}
+	}
 	openClawRegistered := false
 	if *registerOpenClawFlag {
 		if err := registerOpenClaw(); err != nil {
@@ -79,6 +87,7 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		"config_path":         configPath(),
 		"database_path":       dbPath(),
 		"bootstrap_contract":  bootstrapContractPath(),
+		"openclaw_codex":      openClawCodexTimeout,
 		"openclaw_registered": openClawRegistered,
 		"target":              cfg.Target,
 		"run":                 run,
@@ -97,6 +106,7 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if cfg.WorkspacePath != "" {
 		fmt.Fprintf(stdout, "Workspace: %s\n", cfg.WorkspacePath)
 	}
+	printOpenClawCodexTimeoutStatus(stdout, openClawCodexTimeout)
 	fmt.Fprintf(stdout, "Target: %s %s (%s)\n", cfg.Target.Runtime, cfg.Target.Entity, targetModelDisplay(cfg.Target))
 	printRunSummary(stdout, run)
 	return statusCode(run.Status)
@@ -262,6 +272,23 @@ func printRunSummary(stdout io.Writer, run Run) {
 	}
 	fmt.Fprintf(stdout, "Review: baseline report %s\n", run.ID)
 	fmt.Fprintf(stdout, "Accept only after review: baseline accept %s --confirm \"accept %s\"\n", run.ID, run.ID)
+}
+
+func printOpenClawCodexTimeoutStatus(stdout io.Writer, status OpenClawCodexTimeoutStatus) {
+	if status.ConfigPath == "" {
+		return
+	}
+	if status.Skipped {
+		fmt.Fprintf(stdout, "OpenClaw Codex timeout: skipped (%s)\n", status.Reason)
+		return
+	}
+	if status.Changed {
+		fmt.Fprintf(stdout, "OpenClaw Codex timeout: set to %ds (snapshot: %s)\n", openClawCodexTimeoutMS/1000, status.SnapshotPath)
+		return
+	}
+	if status.Applied {
+		fmt.Fprintf(stdout, "OpenClaw Codex timeout: already >= %ds\n", openClawCodexTimeoutMS/1000)
+	}
 }
 
 func shouldRunInBackground(forceBackground, forceForeground, jsonOut bool, questionCount int, stdout io.Writer) bool {

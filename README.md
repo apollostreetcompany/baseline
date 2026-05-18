@@ -35,13 +35,13 @@ baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
 
-`baseline setup` writes `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, the local database/redaction files, then runs the real default target eval. It prints the report and response artifact paths so the operator can review before accepting. Use `baseline doctor` for read-only preflight when you do not want to send agent probe messages.
+`baseline setup` writes `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, the local database/redaction files, ensures OpenClaw Codex app-server request/turn-idle timeouts are at least 900 seconds, then runs the real default target eval. It prints the report and response artifact paths so the operator can review before accepting. Use `baseline doctor` for read-only preflight when you do not want to send agent probe messages.
 
 The default target is OpenClaw `agent:main` with `model_policy: follow_current`, which means Baseline evaluates the agent as the operator currently configured it. Pinning a different model is an advanced config choice. The default run uses the 14-question Baseline Core pack; use `--packs enabled` or `--packs all` only when the operator wants a wider eval. The full v0.1 pack list is in [docs/QUESTION_SET.md](docs/QUESTION_SET.md).
 
 ## Setup Lifecycle
 
-`baseline setup` is idempotent for Baseline-owned files. It creates `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, `~/.baseline/baseline.db`, report/redaction directories, runs SQLite migrations, detects OpenClaw, runs the default eval, and prints the next command. It does not enable cloud sync. OpenClaw MCP registration stays explicit through `baseline install openclaw` or `baseline setup --register-openclaw`.
+`baseline setup` is idempotent for Baseline-owned files. It creates `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, `~/.baseline/baseline.db`, report/redaction directories, runs SQLite migrations, detects OpenClaw, runs the default eval, and prints the next command. For OpenClaw targets, setup also snapshots `~/.openclaw/openclaw.json` and patches `plugins.entries.codex.config.appServer.requestTimeoutMs` plus `turnCompletionIdleTimeoutMs` to at least `900000` ms so long Baseline runs do not inherit OpenClaw's 60s Codex app-server idle watchdog. It does not enable cloud sync. OpenClaw MCP registration stays explicit through `baseline install openclaw` or `baseline setup --register-openclaw`.
 
 Optional sync setup stays explicit:
 
@@ -92,6 +92,8 @@ openclaw agent --json --session-id <baseline-session-id> --message <probe>
 For every probe, Baseline records `system_send_at` immediately before sending the message and `baseline_received_at` immediately after receiving the completed response. It then correlates `openclaw sessions --json` by session ID/time window for model/provider and token metadata. If token metadata cannot be correlated, `token_status` is `unavailable`; if OpenClaw reports stale metadata, `token_status` is `stale`. Baseline never estimates tokens from text length.
 
 OpenClaw's MCP bridge is Gateway-backed: live events only exist while the bridge session is connected, and older history should be read from transcript tools. Token and cost visibility follows OpenClaw usage configuration; OAuth-backed sessions may expose tokens without dollar cost.
+
+If logs show `idleMs=60007`, `timeoutMs=60000`, `lastActivityReason=notification:item/completed`, or `turn_completion_idle_timeout`, the failing layer is OpenClaw's Codex app-server idle watchdog. Run `baseline setup` or `baseline install openclaw`, then start a fresh eval. If ACP child Codex runs or memory search show `401 Unauthorized` with `__OPENCLAW_REDACTED__`, treat that as a child environment/auth configuration failure, not a model timeout. Do not remove Google/Gemini search or background API configuration to fix that class of failure.
 
 References: [OpenClaw MCP bridge](https://docs.openclaw.ai/cli/mcp), [OpenClaw token usage](https://openclawlab.com/en/docs/reference/token-use/).
 

@@ -31,7 +31,7 @@ baseline compare
 
 Then run `baseline run` and `baseline compare` any time you want to check drift against the accepted Good Baselines. Use `baseline doctor` when you only want local preflight and do not want to send OpenClaw probe messages.
 
-`baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
+`baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. For OpenClaw targets, `baseline setup` also snapshots `~/.openclaw/openclaw.json` and ensures Codex app-server request and turn-idle timeouts are at least 900 seconds. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
 
 Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete.
 
@@ -46,6 +46,8 @@ openclaw mcp set baseline '{"command":"baseline","args":["serve","mcp"]}'
 OpenClaw behavior checks invoke `openclaw agent --json --session-id <baseline-session-id> --message <probe>`. Baseline captures `system_send_at` before sending and `baseline_received_at` when the response returns, then correlates `openclaw sessions --json` for model and token metadata. Do not infer token usage from transcript length. If usage metadata is missing, report OpenClaw metrics as unavailable.
 
 The OpenClaw MCP bridge keeps live events only while connected; durable history must be read from the Gateway-backed transcript tools.
+
+Timeout diagnosis rule: `idleMs=60007`, `timeoutMs=60000`, or `turn_completion_idle_timeout` points at OpenClaw's Codex app-server idle watchdog. Rerun `baseline setup` or `baseline install openclaw`, then start a fresh eval. `401 Unauthorized` with `__OPENCLAW_REDACTED__` in ACP child Codex streams or memory search is an auth/env failure, not a real timeout; report the exact child path to the operator and do not remove Google/Gemini search configuration.
 
 ## Daily Self-Check
 

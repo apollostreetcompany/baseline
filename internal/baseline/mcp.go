@@ -92,7 +92,7 @@ func mcpTools() []map[string]any {
 	return []map[string]any{
 		{
 			"name":        "baseline_setup",
-			"description": "Discovery: first tool to call when Baseline is not configured or the operator says \"run baseline\" for the first time. It writes Baseline-owned setup files, runs the real default target eval, returns report paths and next actions. Do not accept the result for the user.",
+			"description": "Discovery: first tool to call when Baseline is not configured or the operator says \"run baseline\" for the first time. It writes Baseline-owned setup files, applies the OpenClaw Codex 900s timeout guardrail when targeting OpenClaw, runs the real default target eval, returns report paths and next actions. Do not accept the result for the user.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 				"packs":             stringProp("advanced: baseline, enabled, all, or comma-separated pack ids"),
 				"agent_command":     stringProp("advanced escape hatch; prompt is passed as BASELINE_PROMPT"),
@@ -212,6 +212,13 @@ func mcpSetup(args map[string]any) (any, error) {
 	if err := writeBootstrapContract(cfg); err != nil {
 		return nil, err
 	}
+	openClawCodexTimeout := OpenClawCodexTimeoutStatus{}
+	if cfg.Target.Runtime == "openclaw" {
+		openClawCodexTimeout, err = ensureOpenClawCodexTimeout()
+		if err != nil {
+			return nil, err
+		}
+	}
 	openClawRegistered := false
 	if boolArg(args, "register_openclaw", false) {
 		if err := registerOpenClaw(); err != nil {
@@ -227,6 +234,7 @@ func mcpSetup(args map[string]any) (any, error) {
 		"status":              "setup_started",
 		"config_path":         configPath(),
 		"bootstrap_contract":  bootstrapContractPath(),
+		"openclaw_codex":      openClawCodexTimeout,
 		"openclaw_registered": openClawRegistered,
 		"target":              cfg.Target,
 		"run_status":          status,
