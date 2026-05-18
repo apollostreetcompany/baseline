@@ -259,6 +259,10 @@ func mcpRun(args map[string]any) (any, error) {
 
 func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (RunLifecycleStatus, error) {
 	runID := newRunID()
+	return startAsyncBaselineCommand(mode, runID, stringArg(args, "packs", defaultPacks), stringArg(args, "agent_command", ""))
+}
+
+func startAsyncBaselineCommand(mode, runID, packs, agentCommand string) (RunLifecycleStatus, error) {
 	cfg, cfgErr := loadConfig()
 	if cfgErr != nil {
 		return RunLifecycleStatus{}, cfgErr
@@ -289,10 +293,10 @@ func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (Ru
 		}
 	}
 	cmdArgs := []string{mode, "--run-id", runID}
-	if packs := stringArg(args, "packs", defaultPacks); packs != "" {
+	if packs != "" {
 		cmdArgs = append(cmdArgs, "--packs", packs)
 	}
-	if agentCommand := stringArg(args, "agent_command", ""); agentCommand != "" {
+	if agentCommand != "" {
 		cmdArgs = append(cmdArgs, "--agent-command", agentCommand)
 	}
 	cmd := exec.Command(exe, cmdArgs...)
@@ -301,11 +305,10 @@ func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (Ru
 	}
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
-	cmd.Env = append(os.Environ(), "BASELINE_WORKSPACE="+runtimeWorkspace(cfg))
+	cmd.Env = append(os.Environ(), "BASELINE_WORKSPACE="+runtimeWorkspace(cfg), "BASELINE_FOREGROUND=1")
 	if err := cmd.Start(); err != nil {
 		return RunLifecycleStatus{}, err
 	}
-	packs := stringArg(args, "packs", defaultPacks)
 	status := plannedRunStatus(runID, mode, packs, len(selectedQuestions(cfg, packs)))
 	status.PID = cmd.Process.Pid
 	status.StdoutPath = stdoutPath

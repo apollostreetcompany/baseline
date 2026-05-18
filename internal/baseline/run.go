@@ -409,7 +409,7 @@ func (s *runState) runQuestionProbes(questions []Question) []questionProbeOutcom
 }
 
 func probeConcurrency(questionCount int) int {
-	value := 2
+	value := 1
 	if configured := strings.TrimSpace(os.Getenv("BASELINE_PROBE_CONCURRENCY")); configured != "" {
 		if parsed, err := strconv.Atoi(configured); err == nil {
 			value = parsed

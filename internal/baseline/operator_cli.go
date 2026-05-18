@@ -6,7 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	isatty "github.com/mattn/go-isatty"
 )
 
 func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -105,6 +108,8 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	jsonOut := fs.Bool("json", false, "print JSON")
 	agentCommand := fs.String("agent-command", "", "advanced: override configured target command for this run")
 	packs := fs.String("packs", "", "advanced: baseline, enabled, all, or comma-separated pack ids")
+	background := fs.Bool("background", false, "start the run in the background and print the run id")
+	foreground := fs.Bool("foreground", false, "internal/advanced: wait for the run to finish")
 	runID := fs.String("run-id", "", "internal: preassigned run id")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -122,6 +127,16 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		assignedRunID = newRunID()
 	}
 	questionCount := len(selectedQuestions(cfg, *packs))
+	if shouldRunInBackground(*background, *foreground, *jsonOut, questionCount, stdout) {
+		status, err := startAsyncBaselineCommand("run", assignedRunID, *packs, *agentCommand)
+		if err != nil {
+			_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "run", err))
+			fmt.Fprintln(stderr, operatorError("run.background", err, "Run baseline doctor, then retry baseline run --foreground if you need a foreground run."))
+			return 1
+		}
+		printBackgroundRunSummary(stdout, status)
+		return 0
+	}
 	_ = writeRunLifecycleStatus(plannedRunStatus(assignedRunID, "run", *packs, questionCount))
 	if !*jsonOut {
 		fmt.Fprintf(stdout, "Starting Baseline %s: target=%s %s, packs=%s, questions=%d, workspace=%s\n", assignedRunID, cfg.Target.Runtime, cfg.Target.Entity, *packs, questionCount, runtimeWorkspace(cfg))
@@ -247,6 +262,43 @@ func printRunSummary(stdout io.Writer, run Run) {
 	}
 	fmt.Fprintf(stdout, "Review: baseline report %s\n", run.ID)
 	fmt.Fprintf(stdout, "Accept only after review: baseline accept %s --confirm \"accept %s\"\n", run.ID, run.ID)
+}
+
+func shouldRunInBackground(forceBackground, forceForeground, jsonOut bool, questionCount int, stdout io.Writer) bool {
+	if forceForeground || jsonOut || os.Getenv("BASELINE_FOREGROUND") == "1" {
+		return false
+	}
+	if forceBackground {
+		return true
+	}
+	if questionCount <= 20 {
+		return false
+	}
+	return !writerIsTerminal(stdout)
+}
+
+func writerIsTerminal(writer io.Writer) bool {
+	file, ok := writer.(*os.File)
+	if !ok {
+		return false
+	}
+	fd := file.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+func printBackgroundRunSummary(stdout io.Writer, status RunLifecycleStatus) {
+	fmt.Fprintf(stdout, "Started Baseline %s in the background.\n", status.RunID)
+	if status.Packs != "" || status.Questions > 0 {
+		fmt.Fprintf(stdout, "Plan: packs=%s, questions=%d\n", status.Packs, status.Questions)
+	}
+	if status.StdoutPath != "" {
+		fmt.Fprintf(stdout, "Stdout: %s\n", status.StdoutPath)
+	}
+	if status.StderrPath != "" {
+		fmt.Fprintf(stdout, "Stderr: %s\n", status.StderrPath)
+	}
+	fmt.Fprintf(stdout, "Poll: baseline report %s\n", status.RunID)
+	fmt.Fprintf(stdout, "Accept only after review: baseline accept %s --confirm \"accept %s\"\n", status.RunID, status.RunID)
 }
 
 func operatorError(step string, err error, next string) string {
