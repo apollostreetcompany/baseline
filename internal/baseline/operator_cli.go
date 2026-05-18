@@ -3,6 +3,7 @@ package baseline
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -73,7 +74,7 @@ func cmdSetup(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		assignedRunID = newRunID()
 	}
 	_ = writeRunLifecycleStatus(startedRunStatus(assignedRunID, "setup"))
-	run, err := RunBaseline(ctx, RunOptions{Mode: "setup", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
+	run, err := RunBaseline(ctx, RunOptions{Mode: "setup", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs, Progress: !*jsonOut})
 	if err != nil {
 		_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "setup", err))
 		fmt.Fprintln(stderr, operatorError("setup.eval", err, "Run baseline doctor, fix the reported target/config issue, then run baseline run."))
@@ -132,6 +133,18 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if *packs == "" {
 		*packs = cfg.Target.Packs
 	}
+	openClawCodexTimeout := OpenClawCodexTimeoutStatus{}
+	if cfg.Target.Runtime == "openclaw" {
+		openClawCodexTimeout, err = ensureOpenClawCodexTimeout()
+		if err != nil {
+			fmt.Fprintln(stderr, operatorError("run.openclaw_repair", err, "Run baseline repair openclaw, then retry baseline run."))
+			return 1
+		}
+		if openClawCodexTimeout.Skipped {
+			fmt.Fprintln(stderr, operatorError("run.openclaw_repair", errors.New(openClawCodexTimeout.Reason), "Run OpenClaw once or repair ~/.openclaw/openclaw.json, then retry baseline run."))
+			return 1
+		}
+	}
 	assignedRunID := strings.TrimSpace(*runID)
 	if assignedRunID == "" {
 		assignedRunID = newRunID()
@@ -144,14 +157,16 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, operatorError("run.background", err, "Run baseline doctor, then retry baseline run --foreground if you need a foreground run."))
 			return 1
 		}
+		printOpenClawCodexTimeoutStatus(stdout, openClawCodexTimeout)
 		printBackgroundRunSummary(stdout, status)
 		return 0
 	}
 	_ = writeRunLifecycleStatus(plannedRunStatus(assignedRunID, "run", *packs, questionCount))
 	if !*jsonOut {
 		fmt.Fprintf(stdout, "Starting Baseline %s: target=%s %s, packs=%s, questions=%d, workspace=%s\n", assignedRunID, cfg.Target.Runtime, cfg.Target.Entity, *packs, questionCount, runtimeWorkspace(cfg))
+		printOpenClawCodexTimeoutStatus(stdout, openClawCodexTimeout)
 	}
-	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
+	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs, Progress: !*jsonOut})
 	if err != nil {
 		_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "run", err))
 		fmt.Fprintln(stderr, operatorError("run.eval", err, "Run baseline doctor, fix the reported target/config issue, then run baseline run again."))
@@ -165,6 +180,76 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	printRunSummary(stdout, run)
 	return statusCode(run.Status)
+}
+
+func cmdRerun(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: baseline rerun RUN_ID")
+		return 2
+	}
+	sourceRunID := strings.TrimSpace(args[0])
+	source, err := readRunLifecycleStatus(sourceRunID)
+	if err != nil {
+		fmt.Fprintln(stderr, operatorError("rerun.source", err, "Run baseline report "+sourceRunID+" to verify the run id, or start a new baseline run."))
+		return 1
+	}
+	if source.State == "running" {
+		fmt.Fprintf(stderr, "rerun refused: %s is still running\n", sourceRunID)
+		fmt.Fprintf(stderr, "Next: baseline report %s\n", sourceRunID)
+		return 2
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintln(stderr, operatorError("rerun.config", err, "Run baseline config validate."))
+		return 1
+	}
+	timeoutStatus := OpenClawCodexTimeoutStatus{}
+	if cfg.Target.Runtime == "openclaw" {
+		timeoutStatus, err = ensureOpenClawCodexTimeout()
+		if err != nil {
+			fmt.Fprintln(stderr, operatorError("rerun.openclaw_repair", err, "Run baseline repair openclaw, then retry baseline rerun "+sourceRunID+"."))
+			return 1
+		}
+		if timeoutStatus.Skipped {
+			fmt.Fprintln(stderr, operatorError("rerun.openclaw_repair", errors.New(timeoutStatus.Reason), "Run OpenClaw once or repair ~/.openclaw/openclaw.json, then retry baseline rerun "+sourceRunID+"."))
+			return 1
+		}
+	}
+	packs := source.Packs
+	if strings.TrimSpace(packs) == "" {
+		packs = cfg.Target.Packs
+	}
+	mode := source.Mode
+	if mode != "setup" {
+		mode = "run"
+	}
+	newRunID := newRunID()
+	status, err := startAsyncBaselineCommand(mode, newRunID, packs, "")
+	if err != nil {
+		fmt.Fprintln(stderr, operatorError("rerun.start", err, "Run baseline doctor, fix findings, then retry baseline rerun "+sourceRunID+"."))
+		return 1
+	}
+	fmt.Fprintf(stdout, "Rerunning Baseline %s as %s.\n", sourceRunID, status.RunID)
+	printOpenClawCodexTimeoutStatus(stdout, timeoutStatus)
+	printBackgroundRunSummary(stdout, status)
+	return 0
+}
+
+func cmdRepair(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || args[0] != "openclaw" {
+		fmt.Fprintln(stderr, "usage: baseline repair openclaw")
+		return 2
+	}
+	status, err := ensureOpenClawCodexTimeout()
+	if err != nil {
+		fmt.Fprintln(stderr, operatorError("repair.openclaw", err, "Fix ~/.openclaw/openclaw.json or ask the operator before changing OpenClaw gateway config."))
+		return 1
+	}
+	printOpenClawCodexTimeoutStatus(stdout, status)
+	if status.Skipped {
+		return 1
+	}
+	return 0
 }
 
 func cmdAccept(args []string, stdout, stderr io.Writer) int {

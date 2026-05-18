@@ -26,6 +26,7 @@ type RunOptions struct {
 	Workspace    string
 	Packs        string
 	Ephemeral    bool
+	Progress     bool
 }
 
 func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
@@ -64,6 +65,7 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		runID:        runIDForOptions(opts),
 		started:      start,
 		observations: make([]Observation, 0, 24),
+		progress:     opts.Progress || os.Getenv("BASELINE_PROGRESS") == "1",
 	}
 	state.checkRuntime()
 	state.checkRepo()
@@ -168,6 +170,8 @@ type runState struct {
 	probes       []ProbeMessage
 	responses    []ProbeResponse
 	redactions   int
+	progress     bool
+	progressMu   sync.Mutex
 }
 
 func (s *runState) addCheck(checkID, lane, kind, status string, severity int, score float64, started time.Time, finding string, metrics map[string]float64) {
@@ -300,6 +304,12 @@ func (s *runState) checkOpenClawConfig() {
 		finding = "OpenClaw config includes a baseline MCP registration."
 	}
 	s.addCheck("mcp.openclaw.config", "baseline", "tooling", status, severity, score, start, finding, nil)
+	if isOpenClawRedactedPlaceholder(openClawNestedString(parsed, "agents", "defaults", "memorySearch", "remote", "apiKey")) {
+		s.addCheck("openclaw.memory.redacted_key", "baseline", "configuration", "warning", 1, 70, start, "OpenClaw memory search is configured with the redacted placeholder as its OpenAI embedding key; memory search may fail with 401 until the real secret path is repaired.", nil)
+	}
+	if isOpenClawRedactedPlaceholder(os.Getenv("OPENAI_API_KEY")) {
+		s.addCheck("openclaw.child_env.redacted_openai_key", "baseline", "configuration", "warning", 1, 70, start, "This process inherited OPENAI_API_KEY=__OPENCLAW_REDACTED__; ACP child Codex runs may fail with 401 and should be reported as auth/config failures, not timeouts.", nil)
+	}
 }
 
 func (s *runState) checkTargetConfig() {
@@ -390,7 +400,10 @@ func (s *runState) runQuestionProbes(questions []Question) []questionProbeOutcom
 			defer wg.Done()
 			for job := range jobs {
 				job.Started = time.Now()
+				s.logQuestionProgress("started", job.Index+1, len(questions), job.Question, 0, nil)
 				job.Result, job.Err = s.askAgentMeasured(job.Question)
+				duration := time.Since(job.Started).Milliseconds()
+				s.logQuestionProgress("finished", job.Index+1, len(questions), job.Question, duration, job.Err)
 				results <- job
 			}
 		}()
@@ -406,6 +419,27 @@ func (s *runState) runQuestionProbes(questions []Question) []questionProbeOutcom
 		outcomes[outcome.Index] = outcome
 	}
 	return outcomes
+}
+
+func (s *runState) logQuestionProgress(phase string, index, total int, q Question, durationMS int64, err error) {
+	if !s.progress {
+		return
+	}
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	label := q.PackID + "." + q.ID
+	if phase == "started" {
+		fmt.Fprintf(os.Stdout, "Baseline progress: question %d/%d started %s\n", index, total, label)
+		_ = updateRunLifecycleProgress(s.runID, index-1, total, label, "running")
+		return
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Baseline progress: question %d/%d failed %s in %dms: %v\n", index, total, label, durationMS, err)
+		_ = updateRunLifecycleProgress(s.runID, index, total, label, "last question failed")
+		return
+	}
+	fmt.Fprintf(os.Stdout, "Baseline progress: question %d/%d finished %s in %dms\n", index, total, label, durationMS)
+	_ = updateRunLifecycleProgress(s.runID, index, total, label, "running")
 }
 
 func probeConcurrency(questionCount int) int {
@@ -706,6 +740,10 @@ func suggestedFix(checkID string) string {
 		return "Install OpenClaw or set BASELINE_AGENT_COMMAND for another agent."
 	case strings.Contains(checkID, "mcp.openclaw"):
 		return "Run baseline install openclaw, then openclaw mcp list."
+	case strings.Contains(checkID, "openclaw.memory.redacted_key"):
+		return "Repair the OpenClaw memory embedding secret through OpenClaw's secret/config mechanism; do not paste keys into chat and do not remove Google/Gemini search config."
+	case strings.Contains(checkID, "openclaw.child_env.redacted_openai_key"):
+		return "Repair the child process environment so ACP/Codex children receive a real auth profile or no OPENAI_API_KEY placeholder; treat 401s as auth failures."
 	case strings.Contains(checkID, "questions.runner"):
 		return "Run baseline run. If this is a custom harness, set target.runtime=custom and agent_command, then run baseline doctor."
 	case strings.Contains(checkID, "target.config"):

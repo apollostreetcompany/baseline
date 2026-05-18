@@ -40,6 +40,8 @@ BASELINE_BIN="$PWD/bin/baseline" pnpm --dir package exec baseline doctor
 baseline setup
 baseline run
 baseline report [RUN_ID]
+baseline rerun RUN_ID
+baseline repair openclaw
 baseline accept RUN_ID --confirm "accept RUN_ID" --label <label>
 baseline good list
 baseline config show
@@ -47,4 +49,4 @@ baseline config set api_token <token>
 baseline schedule install --at 09:00
 ```
 
-`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility. If OpenClaw logs show `turn_completion_idle_timeout` around 60 seconds, rerun `baseline setup` or `baseline install openclaw`; if logs show `__OPENCLAW_REDACTED__` with `401 Unauthorized`, treat it as child env/auth configuration rather than a timeout.
+`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility. If OpenClaw logs show `turn_completion_idle_timeout` around 60 seconds, rerun `baseline setup` or `baseline install openclaw`; if logs show `__OPENCLAW_REDACTED__` with `401 Unauthorized`, treat it as child env/auth configuration rather than a timeout. `baseline report RUN_ID --json` exits `0` for completed, `2` while running, and `1` for failed lifecycle runs; use `baseline rerun RUN_ID` only after reviewing the logged failure.

@@ -25,6 +25,7 @@ Run exactly four commands for a local OpenClaw Good Baseline:
 ```sh
 baseline setup
 baseline report
+baseline rerun <FAILED_RUN_ID>
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
@@ -33,7 +34,7 @@ Then run `baseline run` and `baseline compare` any time you want to check drift 
 
 `baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. For OpenClaw targets, `baseline setup` also snapshots `~/.openclaw/openclaw.json` and ensures Codex app-server request and turn-idle timeouts are at least 900 seconds. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
 
-Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete.
+Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete. To recover a failed lifecycle run after operator approval, call `baseline_run` with `rerun_id` or use CLI `baseline rerun <RUN_ID>`.
 
 Manual MCP registry fallback:
 
@@ -48,6 +49,8 @@ OpenClaw behavior checks invoke `openclaw agent --json --session-id <baseline-se
 The OpenClaw MCP bridge keeps live events only while connected; durable history must be read from the Gateway-backed transcript tools.
 
 Timeout diagnosis rule: `idleMs=60007`, `timeoutMs=60000`, or `turn_completion_idle_timeout` points at OpenClaw's Codex app-server idle watchdog. Rerun `baseline setup` or `baseline install openclaw`, then start a fresh eval. `401 Unauthorized` with `__OPENCLAW_REDACTED__` in ACP child Codex streams or memory search is an auth/env failure, not a real timeout; report the exact child path to the operator and do not remove Google/Gemini search configuration.
+
+Lifecycle rule: `baseline report RUN_ID --json` exits `0` when completed, `2` while still running, and `1` for failed lifecycle runs. Failed background runs include stdout/stderr paths and a rerun action; read those logs before retrying.
 
 ## Daily Self-Check
 

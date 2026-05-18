@@ -105,6 +105,7 @@ func mcpTools() []map[string]any {
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 				"packs":         stringProp("advanced: baseline, enabled, all, or comma-separated pack ids"),
 				"agent_command": stringProp("advanced escape hatch; prompt is passed as BASELINE_PROMPT"),
+				"rerun_id":      stringProp("optional failed lifecycle run id to repair and rerun with the same pack selection"),
 			}},
 		},
 		{
@@ -251,18 +252,54 @@ func mcpRun(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	status, err := startAsyncMCPRun("run", args, cfg.Target.Packs)
+	rerunID := stringArg(args, "rerun_id", "")
+	packsArg := stringArg(args, "packs", "")
+	packs := packsArg
+	if packs == "" {
+		packs = cfg.Target.Packs
+	}
+	if rerunID != "" {
+		source, err := readRunLifecycleStatus(rerunID)
+		if err != nil {
+			return nil, err
+		}
+		if source.State == "running" {
+			return nil, fmt.Errorf("cannot rerun %s because it is still running", rerunID)
+		}
+		if strings.TrimSpace(packsArg) == "" {
+			packs = source.Packs
+		}
+		if strings.TrimSpace(packs) == "" {
+			packs = cfg.Target.Packs
+		}
+	}
+	openClawCodexTimeout := OpenClawCodexTimeoutStatus{}
+	if cfg.Target.Runtime == "openclaw" {
+		openClawCodexTimeout, err = ensureOpenClawCodexTimeout()
+		if err != nil {
+			return nil, err
+		}
+		if openClawCodexTimeout.Skipped {
+			return nil, errors.New(openClawCodexTimeout.Reason)
+		}
+	}
+	status, err := startAsyncBaselineCommand("run", newRunID(), packs, stringArg(args, "agent_command", ""))
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"run_status": status,
+	result := map[string]any{
+		"run_status":     status,
+		"openclaw_codex": openClawCodexTimeout,
 		"next_actions": []string{
 			fmt.Sprintf("Poll with baseline_report run_id=%s until state is completed", status.RunID),
 			"Show the operator REPORT.md plus RESPONSES.md when complete",
 			fmt.Sprintf("Accept only after operator says yes: baseline_accept run_id=%s confirm=%q", status.RunID, "accept "+status.RunID),
 		},
-	}, nil
+	}
+	if rerunID != "" {
+		result["rerun_of"] = rerunID
+	}
+	return result, nil
 }
 
 func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (RunLifecycleStatus, error) {
@@ -313,7 +350,8 @@ func startAsyncBaselineCommand(mode, runID, packs, agentCommand string) (RunLife
 	}
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
-	cmd.Env = append(os.Environ(), "BASELINE_WORKSPACE="+runtimeWorkspace(cfg), "BASELINE_FOREGROUND=1")
+	cmd.SysProcAttr = backgroundProcessAttr()
+	cmd.Env = append(os.Environ(), "BASELINE_WORKSPACE="+runtimeWorkspace(cfg), "BASELINE_FOREGROUND=1", "BASELINE_PROGRESS=1")
 	if err := cmd.Start(); err != nil {
 		return RunLifecycleStatus{}, err
 	}
@@ -581,7 +619,8 @@ func mcpReport(runID string) (any, error) {
 					"run_status": status,
 					"next_actions": []string{
 						"If state is running, wait and call baseline_report again",
-						"If state is failed, read stderr_path and run baseline_doctor",
+						"If state is failed, read stdout_path/stderr_path and run baseline_doctor",
+						fmt.Sprintf("If state is failed and the operator approves, call baseline_run with rerun_id=%s", runID),
 					},
 				}, nil
 			}

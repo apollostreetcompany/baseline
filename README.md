@@ -31,6 +31,7 @@ Run these commands for a local-only OpenClaw setup, first Good Baseline, and dri
 ```sh
 baseline setup
 baseline report
+baseline rerun <FAILED_RUN_ID>
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
 baseline compare
 ```
@@ -68,6 +69,8 @@ baseline compare
 baseline setup
 baseline run
 baseline report
+baseline repair openclaw
+baseline rerun <FAILED_RUN_ID>
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>"
 baseline doctor
 baseline latest --json
@@ -79,7 +82,7 @@ baseline schedule status
 baseline schedule run
 ```
 
-`baseline run` sends real probe messages to the configured target, records latency/quality, and writes `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. `baseline doctor` is read-only preflight and never becomes a Good Baseline candidate. Legacy `baseline check --fast|--full` remains available for scripted compatibility.
+`baseline run` sends real probe messages to the configured target, records latency/quality, and writes `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. Long non-interactive runs are detached into their own process session and write per-question progress into `~/.baseline/runs/<RUN_ID>.stdout.log`; `baseline report RUN_ID --json` exits `0` for completed, `2` for still running, and `1` for failed lifecycle runs. `baseline rerun RUN_ID` applies known guardrails and starts a new run with the same pack selection. `baseline doctor` is read-only preflight and never becomes a Good Baseline candidate. Legacy `baseline check --fast|--full` remains available for scripted compatibility.
 
 ## OpenClaw Timing and Tokens
 

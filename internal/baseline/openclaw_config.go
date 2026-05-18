@@ -115,6 +115,23 @@ func jsonNumberAsInt(value any) (int, bool) {
 	}
 }
 
+func openClawNestedString(root map[string]any, keys ...string) string {
+	var current any = root
+	for _, key := range keys {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current = m[key]
+	}
+	value, _ := current.(string)
+	return value
+}
+
+func isOpenClawRedactedPlaceholder(value string) bool {
+	return value == "__OPENCLAW_REDACTED__"
+}
+
 func snapshotOpenClawConfig(contents []byte) (string, error) {
 	dir := filepath.Join(baseDir(), "snapshots")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

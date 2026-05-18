@@ -40,6 +40,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return cmdLatest(args[1:], stdout, stderr)
 	case "report":
 		return cmdReport(args[1:], stdout, stderr)
+	case "rerun":
+		return cmdRerun(args[1:], stdout, stderr)
+	case "repair":
+		return cmdRepair(args[1:], stdout, stderr)
 	case "compare":
 		return cmdCompare(stdout, stderr)
 	case "good":
@@ -81,6 +85,8 @@ Usage:
   baseline setup [--json]
   baseline run [--json]
   baseline report [RUN_ID]
+  baseline rerun RUN_ID
+  baseline repair openclaw
   baseline accept RUN_ID --confirm "accept RUN_ID"
   baseline status [--json]
   baseline doctor
@@ -284,13 +290,23 @@ func cmdReport(args []string, stdout, stderr io.Writer) int {
 		status, statusErr := readRunLifecycleStatus(positional[0])
 		if statusErr == nil {
 			if jsonOut {
-				return writeJSON(stdout, stderr, map[string]any{"run_status": status})
+				if code := writeJSON(stdout, stderr, map[string]any{"run_status": status}); code != 0 {
+					return code
+				}
+				return statusCodeForLifecycle(status)
 			}
 			fmt.Fprintf(stdout, "Baseline %s is %s", status.RunID, status.State)
 			if status.Packs != "" || status.Questions > 0 {
 				fmt.Fprintf(stdout, " (packs=%s questions=%d)", status.Packs, status.Questions)
 			}
 			fmt.Fprintln(stdout)
+			if status.CurrentQuestion != "" || status.CompletedQuestions > 0 {
+				fmt.Fprintf(stdout, "Progress: %d/%d current=%s", status.CompletedQuestions, status.Questions, status.CurrentQuestion)
+				if status.ProgressNote != "" {
+					fmt.Fprintf(stdout, " note=%s", status.ProgressNote)
+				}
+				fmt.Fprintln(stdout)
+			}
 			if status.Error != "" {
 				fmt.Fprintf(stdout, "Error: %s\n", status.Error)
 			}
