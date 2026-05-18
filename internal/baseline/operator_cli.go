@@ -121,7 +121,11 @@ func cmdRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if assignedRunID == "" {
 		assignedRunID = newRunID()
 	}
-	_ = writeRunLifecycleStatus(startedRunStatus(assignedRunID, "run"))
+	questionCount := len(selectedQuestions(cfg, *packs))
+	_ = writeRunLifecycleStatus(plannedRunStatus(assignedRunID, "run", *packs, questionCount))
+	if !*jsonOut {
+		fmt.Fprintf(stdout, "Starting Baseline %s: target=%s %s, packs=%s, questions=%d, workspace=%s\n", assignedRunID, cfg.Target.Runtime, cfg.Target.Entity, *packs, questionCount, runtimeWorkspace(cfg))
+	}
 	run, err := RunBaseline(ctx, RunOptions{Mode: "run", RunID: assignedRunID, RunAgent: true, AgentCommand: *agentCommand, Packs: *packs})
 	if err != nil {
 		_ = writeRunLifecycleStatus(failedRunStatus(assignedRunID, "run", err))

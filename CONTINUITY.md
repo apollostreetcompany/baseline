@@ -45,16 +45,18 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 15: Added operator-first Baseline setup/run/report/accept UX, local response artifacts, agent BOOTSTRAP.md contract, default target config, real scheduled evals, structured MCP recovery errors, and seven workflow-first MCP tools.
 - [x] Bead 16: Fixed first-run lifecycle issues by making doctor/preflight ephemeral, making latest/status prefer real eval runs over local preflight rows, adding async MCP setup/run/schedule execution with run status files, and adding a bounded cloud sync HTTP timeout.
 - [x] Bead 17: Hardened scheduled Baseline runs by persisting `workspace_path`, installing launchd with `WorkingDirectory`, `BASELINE_WORKSPACE`, `HOME`, and a Homebrew-aware `PATH`, running repo/agent probes from the configured workspace, and preventing newer preflight-only scheduled failures from hiding the last completed eval.
+- [x] Bead 18: Fixed expanded-run ambiguity by marking stale async lifecycle runs failed when their child PID is gone, showing lifecycle status through `baseline report RUN_ID`, running MCP child processes from the configured workspace, and printing the planned pack/question count before long direct CLI runs.
 
 ### Now
-- Bead 17 schedule/workspace hardening complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
+- Bead 18 expanded-run lifecycle hardening complete. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `3e95bb33-512d-4298-aad6-f2d189f3f936`.
 - Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
 - First real OpenClaw eval `run_dil295nlwpug` completed with status warning, health 92, 14 Baseline Core probes, and one slow `ops_change` warning at 95026ms. A later scheduled run `run_dil2s3gle45k` did fire but failed preflight from `/` with launchd's stripped PATH; `baseline latest` and `baseline status` now point back to the real eval instead of that preflight-only failure.
-- MCP `baseline_run`, `baseline_setup`, and `baseline_schedule action=run` now return quickly with a lifecycle `run_status.run_id`; agents should poll `baseline_report` for completion instead of holding the MCP call open for the whole eval.
+- MCP `baseline_run`, `baseline_setup`, and `baseline_schedule action=run` now return quickly with a lifecycle `run_status.run_id`; agents should poll `baseline_report` for completion instead of holding the MCP call open for the whole eval. If the child process disappears before a DB row is written, `baseline_report`/`baseline report` now marks the run failed instead of leaving it stuck as running.
+- The attempted expanded eval did not reach the database. The only completed recent run, `run_dil3zb2qcsr4`, used 14 Baseline Core questions; stale async IDs `run_dil4g5yfgqd4` and `run_dilh3j41nh1s` are now marked failed because their PIDs are gone and no result rows/artifacts were written.
 
 ### Next
-- Bead 18: Split dogfood admin token from ingest token before external pilot.
-- Bead 19: Stripe entitlement or API token/workspace model, depending on available credentials.
+- Bead 19: Split dogfood admin token from ingest token before external pilot.
+- Bead 20: Stripe entitlement or API token/workspace model, depending on available credentials.
 - Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions

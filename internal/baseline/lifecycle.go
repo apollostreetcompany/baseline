@@ -2,8 +2,11 @@ package baseline
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -12,6 +15,8 @@ type RunLifecycleStatus struct {
 	Mode        string       `json:"mode"`
 	State       string       `json:"state"`
 	PID         int          `json:"pid,omitempty"`
+	Packs       string       `json:"packs,omitempty"`
+	Questions   int          `json:"questions,omitempty"`
 	StartedAt   time.Time    `json:"started_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
 	Status      string       `json:"status,omitempty"`
@@ -56,7 +61,7 @@ func readRunLifecycleStatus(runID string) (RunLifecycleStatus, error) {
 	if err := json.Unmarshal(b, &status); err != nil {
 		return status, err
 	}
-	return status, nil
+	return refreshRunLifecycleStatus(status), nil
 }
 
 func startedRunStatus(runID, mode string) RunLifecycleStatus {
@@ -74,6 +79,19 @@ func startedRunStatus(runID, mode string) RunLifecycleStatus {
 		StderrPath:  stderrPath,
 		NextActions: []string{"Wait for the run to complete", "Then run baseline report " + runID},
 	}
+}
+
+func plannedRunStatus(runID, mode, packs string, questions int) RunLifecycleStatus {
+	status := startedRunStatus(runID, mode)
+	status.Packs = packs
+	status.Questions = questions
+	if questions > 0 {
+		status.NextActions = []string{
+			fmt.Sprintf("Wait for %d %s questions to complete", questions, packs),
+			"Then run baseline report " + runID,
+		}
+	}
+	return status
 }
 
 func completedRunStatus(run Run) RunLifecycleStatus {
@@ -102,4 +120,24 @@ func failedRunStatus(runID, mode string, err error) RunLifecycleStatus {
 	status.Error = err.Error()
 	status.NextActions = []string{"Run baseline doctor", "Fix the reported runtime/config issue", "Rerun baseline run"}
 	return status
+}
+
+func refreshRunLifecycleStatus(status RunLifecycleStatus) RunLifecycleStatus {
+	if status.State != "running" || status.PID <= 0 || processAlive(status.PID) {
+		return status
+	}
+	status.State = "failed"
+	status.Error = fmt.Sprintf("run process pid %d is no longer running and no result row was written", status.PID)
+	status.NextActions = []string{
+		"Read stdout_path and stderr_path for the missing child output",
+		"Run baseline doctor",
+		"Rerun baseline run after fixing the reported issue",
+	}
+	_ = writeRunLifecycleStatus(status)
+	return status
+}
+
+func processAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

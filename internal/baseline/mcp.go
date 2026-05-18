@@ -259,6 +259,10 @@ func mcpRun(args map[string]any) (any, error) {
 
 func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (RunLifecycleStatus, error) {
 	runID := newRunID()
+	cfg, cfgErr := loadConfig()
+	if cfgErr != nil {
+		return RunLifecycleStatus{}, cfgErr
+	}
 	if err := ensureDirs(); err != nil {
 		return RunLifecycleStatus{}, err
 	}
@@ -292,13 +296,17 @@ func startAsyncMCPRun(mode string, args map[string]any, defaultPacks string) (Ru
 		cmdArgs = append(cmdArgs, "--agent-command", agentCommand)
 	}
 	cmd := exec.Command(exe, cmdArgs...)
+	if workspace := runtimeWorkspace(cfg); workspace != "" {
+		cmd.Dir = workspace
+	}
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "BASELINE_WORKSPACE="+runtimeWorkspace(cfg))
 	if err := cmd.Start(); err != nil {
 		return RunLifecycleStatus{}, err
 	}
-	status := startedRunStatus(runID, mode)
+	packs := stringArg(args, "packs", defaultPacks)
+	status := plannedRunStatus(runID, mode, packs, len(selectedQuestions(cfg, packs)))
 	status.PID = cmd.Process.Pid
 	status.StdoutPath = stdoutPath
 	status.StderrPath = stderrPath

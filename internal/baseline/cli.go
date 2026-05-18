@@ -280,6 +280,32 @@ func cmdReport(args []string, stdout, stderr io.Writer) int {
 	} else {
 		run, err = latestRun(db)
 	}
+	if errors.Is(err, sql.ErrNoRows) && len(positional) > 0 {
+		status, statusErr := readRunLifecycleStatus(positional[0])
+		if statusErr == nil {
+			if jsonOut {
+				return writeJSON(stdout, stderr, map[string]any{"run_status": status})
+			}
+			fmt.Fprintf(stdout, "Baseline %s is %s", status.RunID, status.State)
+			if status.Packs != "" || status.Questions > 0 {
+				fmt.Fprintf(stdout, " (packs=%s questions=%d)", status.Packs, status.Questions)
+			}
+			fmt.Fprintln(stdout)
+			if status.Error != "" {
+				fmt.Fprintf(stdout, "Error: %s\n", status.Error)
+			}
+			if status.StdoutPath != "" {
+				fmt.Fprintf(stdout, "Stdout: %s\n", status.StdoutPath)
+			}
+			if status.StderrPath != "" {
+				fmt.Fprintf(stdout, "Stderr: %s\n", status.StderrPath)
+			}
+			for _, action := range status.NextActions {
+				fmt.Fprintf(stdout, "- %s\n", action)
+			}
+			return statusCodeForLifecycle(status)
+		}
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -308,6 +334,17 @@ func cmdReport(args []string, stdout, stderr io.Writer) int {
 	}
 	payload := map[string]any{"run": run, "observations": observations}
 	return writeJSON(stdout, stderr, payload)
+}
+
+func statusCodeForLifecycle(status RunLifecycleStatus) int {
+	switch status.State {
+	case "completed":
+		return 0
+	case "running":
+		return 2
+	default:
+		return 1
+	}
 }
 
 func cmdCompare(stdout, stderr io.Writer) int {
