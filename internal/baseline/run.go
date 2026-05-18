@@ -224,6 +224,23 @@ func (s *runState) observeNumber(key string, value float64) {
 
 func (s *runState) checkRuntime() {
 	start := time.Now()
+	if s.cfg.Target.Runtime == "hermes" {
+		path, err := exec.LookPath("hermes")
+		if err != nil {
+			s.addCheck("runtime.hermes", "core", "environment", "critical", 2, 20, start, "Hermes binary was not found on PATH.", nil)
+			return
+		}
+		version, err := commandOutput(s.ctx, 5*time.Second, path, "--version")
+		if err != nil {
+			s.addCheck("runtime.hermes", "core", "environment", "warning", 1, 72, start, "Hermes exists but version check failed: "+err.Error(), nil)
+			return
+		}
+		version = strings.TrimSpace(version)
+		s.observe("runtime.hermes.path", path, path)
+		s.observe("runtime.hermes.version", version, version)
+		s.addCheck("runtime.hermes", "core", "environment", "ok", 0, 100, start, "Hermes runtime detected: "+version, nil)
+		return
+	}
 	if s.cfg.Target.Runtime == "custom" {
 		if strings.TrimSpace(s.cfg.AgentCommand) != "" || strings.TrimSpace(s.opts.AgentCommand) != "" || strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND")) != "" {
 			s.observe("runtime.custom.command", "configured", "configured")
@@ -316,6 +333,11 @@ func (s *runState) checkTargetConfig() {
 	start := time.Now()
 	target := s.cfg.Target
 	switch target.Runtime {
+	case "hermes":
+		if _, err := exec.LookPath("hermes"); err != nil {
+			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target is Hermes, but the hermes binary is not on PATH.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
+			return
+		}
 	case "openclaw":
 		if _, err := exec.LookPath("openclaw"); err != nil {
 			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target is OpenClaw, but the openclaw binary is not on PATH.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
@@ -586,6 +608,9 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 		}
 		return AgentProbeResult{Output: string(out), ProbeMessage: msg}, nil
 	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return runHermesProbeWithTarget(s.ctx, s.runID, q, s.cfg.Target, s.commandDir())
+	}
 	path, err := exec.LookPath("openclaw")
 	if err != nil {
 		return AgentProbeResult{}, err
@@ -616,6 +641,9 @@ func (s *runState) askAgent(prompt string) (string, error) {
 		}
 		return string(out), nil
 	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return runHermesPrompt(s.ctx, prompt, s.cfg.Target, s.commandDir())
+	}
 	path, err := exec.LookPath("openclaw")
 	if err != nil {
 		return "", err
@@ -626,6 +654,9 @@ func (s *runState) askAgent(prompt string) (string, error) {
 func (s *runState) agentKind() string {
 	if s.opts.AgentCommand != "" || s.cfg.AgentCommand != "" || os.Getenv("BASELINE_AGENT_COMMAND") != "" {
 		return "custom"
+	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return "hermes"
 	}
 	if _, err := exec.LookPath("openclaw"); err == nil {
 		return "openclaw"

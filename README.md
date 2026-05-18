@@ -113,11 +113,15 @@ baseline config set api_base_url <url>
 baseline config set api_token <token>
 baseline config set target.model_policy pinned
 baseline config set target.pinned_model openai/gpt-5.5
+baseline config set target.runtime hermes
+baseline config set target.runtime custom
 baseline config set agent_command '<advanced command using BASELINE_PROMPT>'
 baseline config set monitor_packs.workflow_test.enabled true
 baseline config set monitor_packs.self_log_execution.enabled false
 baseline config validate --json
 ```
+
+Hermes native mode (`target.runtime hermes`) shells directly to `hermes chat -Q -q <prompt>` with the current Hermes model. Use `target.model_policy pinned` plus `target.pinned_model` when a run should pass `-m` to Hermes. Custom mode remains available for arbitrary commands; Baseline sets `BASELINE_PROMPT` before invoking `agent_command`.
 
 ## MCP Tools
 
