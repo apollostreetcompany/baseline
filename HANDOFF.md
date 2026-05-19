@@ -8,7 +8,7 @@
   - Bead 24: refreshed Worker deployed to https://baseline-ai.ryan-borker.workers.dev at version `5cc879a3-983d-4e59-a620-e8abd8d70a99`.
   - Bead 25: cloud accounts, Stripe/Klaviyo entitlement lifecycle, account-scoped tokens, remote MCP, SwiftUI macOS hotspot client, skill audit, and Worker deployment version `dfc2198f-9151-4a64-8511-4e25d3c2d529`.
   - Bead 27: `landing-a` homepage redesign plus local BrandOS runtime repair, deployed to Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
-  - Integration: combine Bead 25 cloud/Mac app functionality with Bead 27 landing before PR to `main`.
+  - Integration: PR #1 (`https://github.com/apollostreetcompany/baseline/pull/1`) combines Bead 25 cloud/Mac app functionality with Bead 27 landing before merge to `main`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
@@ -32,7 +32,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Integration branch is active: validate and open a PR to merge both Bead 25 and Bead 27 to `main`.
+- PR #1 is open from `codex/integrate/bead-27-main-ready` to `main`; merge only after repository checks are green.
 
 ## Commands To Re-run
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
@@ -58,6 +58,7 @@
 - Bead 27 screenshots saved to `/tmp/baseline-landing-a-combined-desktop.png`, `/tmp/baseline-landing-a-combined-mobile.png`, `/tmp/baseline-live-landing-a-desktop.png`, and `/tmp/baseline-live-landing-a-mobile.png`.
 - Bead 27 live smoke: `https://baseline-ai.ryan-borker.workers.dev/api/health` returned `db:true`, `stripe:false`, `token_required:true`, `pro_auth:false`, `pro_tokens:false`, `stripe_webhook:false`; live `/` contained `Your agent forgot`, `Three agents`, `Fourteen probes`, and `In the line`; `/docs/mcp` still served remote MCP docs; `/assets/baseline-court-serve.png` returned `200`; checkout still fails closed until Stripe secrets are set.
 - BrandOS validation: `scripts/audit_skill_pack.py`, `scripts/validate_prose.py workflows`, `bash scripts/compile_prose.sh`, `scripts/check_stage_gates.py examples/shogun-sauce/workspace`, `python3 -m py_compile`, `bash -n`, `make verify-library`, and `make verify-codex` all passed; `make verify-codex` retains optional missing-agent warnings only.
+- Integration validation for PR #1: `make verify-all`, `git diff --check`, `git diff --cached --check`, `node` JSONL parse, `cd web && npm audit --audit-level=high`, and local Worker smokes for `/api/health`, `/`, `/docs/mcp`, `/mcp`, `/.well-known/oauth-protected-resource`, `/assets/baseline-court-serve.png`, and `POST /api/checkout` passed.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and should not print secret values.
