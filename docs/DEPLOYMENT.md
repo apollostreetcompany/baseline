@@ -33,6 +33,9 @@ Missing optional secrets:
 
 - Worker static assets are now configured through `web/wrangler.jsonc` with `assets.directory = "./public"`.
 - Current image assets live under `web/public/assets/` and are uploaded by Wrangler with the Worker.
+- Deployed Worker version: `5cc879a3-983d-4e59-a620-e8abd8d70a99`
+- Deployed URL: https://baseline-ai.ryan-borker.workers.dev
+- Implementation commit deployed: `257c17f`
 - Local verification path:
 
 ```sh
@@ -56,6 +59,25 @@ Checkout behavior:
 - `GET /api/checkout?plan=pro|team` still redirects to payment links when configured, otherwise creates a Stripe Checkout Session when Stripe secrets/price IDs are present.
 - `POST /api/checkout` accepts `{ email, plan, successUrl, cancelUrl }` and returns `{ ok, url }` for the landing-page email form.
 - Klaviyo checkout-start events are best-effort through `ctx.waitUntil`; they must not grant entitlement or block checkout.
+
+Live deployment verification on 2026-05-19:
+
+```sh
+cd web
+npm run deploy
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/ | rg -n "Baseline.ai|Keep coding agents|Pro monitoring"
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/blog | rg -n "Blog stub|Pro Account Architecture|field notes"
+curl -I -fsS https://baseline-ai.ryan-borker.workers.dev/assets/baseline-court-robot.png
+curl -sS -X POST https://baseline-ai.ryan-borker.workers.dev/api/checkout -H 'content-type: application/json' --data '{"email":"pilot@example.com","plan":"pro"}'
+```
+
+Results:
+
+- Live health returned `{"ok":true,"db":true,"stripe":false,"token_required":true,"lifecycle_email":false}`.
+- Landing page and blog stub served the new brand/documentation content.
+- Uploaded hero image returned `HTTP/2 200`.
+- Checkout fallback returned `{"ok":false,"error":"Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links."}`.
 
 ## Live Smoke Test
 
