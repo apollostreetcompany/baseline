@@ -354,6 +354,45 @@ Deployment result:
 
 - Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0` serves the updated install docs and `/install.sh` asset on `trackbaseline.com`.
 
+## 2026-05-19 DataFast Funnel Analytics
+
+DataFast is configured for the public launch share loop.
+
+- Website domain: `trackbaseline.com`
+- Website id: `6a0c48aa9a21aee7bf04cf6e`
+- Tracking id: `dfid_PYprhfTkwwQKhkzRUhVtO`
+- Tracking script: loaded in the Worker HTML `<head>` on all pages.
+
+Tracked launch goals:
+
+- `scroll_to_scoreboard`
+- `scroll_to_probes`
+- `scroll_to_pricing`
+- `scroll_to_final_cta`
+- `install_click`
+- `docs_click`
+- `dashboard_click`
+- `blog_click`
+- `checkout_start`
+- `checkout_redirect`
+- `checkout_return_success`
+- `checkout_return_cancel`
+
+Created DataFast CLI funnels:
+
+- `Baseline install funnel`: `/` pageview -> `scroll_to_pricing` -> `install_click`
+- `Baseline Pro funnel`: `/` pageview -> `scroll_to_pricing` -> `checkout_start` -> `checkout_return_success`
+
+CLI reporting:
+
+```sh
+export DATAFAST_TOKEN="dft_..."
+make analytics-report
+DATAFAST_PERIOD=last24h make analytics-report
+```
+
+Do not commit or print DataFast tokens. Prefer `DATAFAST_TOKEN` in the shell session, 1Password, Keychain, or CI secret storage.
+
 ## 2026-05-19 Landing A Redesign And BrandOS Repair
 
 Bead 27 replaces the homepage with a Worker-native port of `/Users/kikimac/Downloads/baseline.zip` `landing-a.jsx` and reuses the supplied court robot image assets already present under `web/public/assets/`. The deploy intentionally preserves Bead 25 cloud account, token, webhook, history, comparison, and remote MCP routes.

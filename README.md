@@ -218,3 +218,12 @@ See `docs/PUBLISHING.md` for release and verification steps.
 ## Production Pro Status
 
 Production Worker secrets are configured for Stripe Checkout, Stripe webhooks, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. The remaining paid-pilot check is an end-to-end live checkout/magic-link/workspace-token/sync smoke with a real invited account.
+
+## Launch Analytics
+
+The public Worker loads DataFast for `trackbaseline.com` and tracks launch funnel goals for section scroll, install intent, docs clicks, checkout start, and Stripe return states. Use the CLI report helper with a local `DATAFAST_TOKEN`; never commit the token.
+
+```sh
+DATAFAST_TOKEN="dft_..." make analytics-report
+DATAFAST_TOKEN="dft_..." DATAFAST_PERIOD=last24h make analytics-report
+```
