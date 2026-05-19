@@ -4,14 +4,14 @@ Baseline is a local-first Go/SQLite CLI and MCP server for coding-agent workstat
 
 Live launch surface:
 
-- Landing page: https://baseline-ai.ryan-borker.workers.dev
-- Dashboard: https://baseline-ai.ryan-borker.workers.dev/dashboard
-- Admin: https://baseline-ai.ryan-borker.workers.dev/admin
-- MCP docs: https://baseline-ai.ryan-borker.workers.dev/docs/mcp
-- Blog stub: https://baseline-ai.ryan-borker.workers.dev/blog
-- Remote MCP: https://baseline-ai.ryan-borker.workers.dev/mcp
-- Latest run API: https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
-- Timeline API: https://baseline-ai.ryan-borker.workers.dev/api/runs/timeline
+- Landing page: https://trackbaseline.com
+- Dashboard: https://trackbaseline.com/dashboard
+- Admin: https://trackbaseline.com/admin
+- MCP docs: https://trackbaseline.com/docs/mcp
+- Blog stub: https://trackbaseline.com/blog
+- Remote MCP: https://trackbaseline.com/mcp
+- Latest run API: https://trackbaseline.com/api/runs/latest
+- Timeline API: https://trackbaseline.com/api/runs/timeline
 
 ## Install
 
@@ -49,7 +49,7 @@ The default target is OpenClaw `agent:main` with `model_policy: follow_current`,
 Optional sync setup stays explicit:
 
 ```sh
-baseline sync on --url https://baseline-ai.ryan-borker.workers.dev --token <token>
+baseline sync on --url https://trackbaseline.com --token <token>
 ```
 
 For Pro, that token should now be a workspace token created from an invited account session. The old global dogfood token still works as a temporary fallback, but it is not the customer path.
@@ -198,7 +198,7 @@ The deployed ingest API accepts either the temporary global dogfood token or a P
 ## Deployed Infrastructure
 
 - Cloudflare Worker: `baseline-ai`
-- Worker URL: https://baseline-ai.ryan-borker.workers.dev
+- Worker URL: https://trackbaseline.com
 - Neon project: `baseline-v0` (`summer-cake-63602849`)
 - Neon tables: `baseline_runs`, `baseline_events`, `canonical_question_sets`, `llm_evaluations`, plus Pro account/billing tables in `web/schema.sql`.
 

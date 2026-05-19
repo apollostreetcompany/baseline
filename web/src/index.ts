@@ -1620,7 +1620,7 @@ function escapeHTML(value: string): string {
 function baseURL(env: Env, request?: Request): string {
   if (env.APP_URL) return env.APP_URL.replace(/\/$/, "");
   if (request) return new URL(request.url).origin;
-  return "https://baseline-ai.workers.dev";
+  return "https://trackbaseline.com";
 }
 
 function hasStripe(env: Env): boolean {

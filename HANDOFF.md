@@ -9,9 +9,11 @@
   - Bead 25: cloud accounts, Stripe/Klaviyo entitlement lifecycle, account-scoped tokens, remote MCP, SwiftUI macOS hotspot client, skill audit, and Worker deployment version `dfc2198f-9151-4a64-8511-4e25d3c2d529`.
   - Bead 27: `landing-a` homepage redesign plus local BrandOS runtime repair, deployed to Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
   - Integration: PR #1 (`https://github.com/apollostreetcompany/baseline/pull/1`) combines Bead 25 cloud/Mac app functionality with Bead 27 landing before merge to `main`.
+  - Bead 28: Cloudflare custom domain deployment makes `https://trackbaseline.com` the canonical public URL, with `www.trackbaseline.com` and workers.dev fallback triggers.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
+- Canonical production URL is now `https://trackbaseline.com`.
 - Existing checkout route supports Stripe payment links or direct Stripe Checkout sessions.
 - Existing admin/evaluator endpoints use `BASELINE_ADMIN_TOKEN`, Neon, and optional OpenAI evaluator.
 - Bibe Code reference patterns inspected:
@@ -32,7 +34,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- PR #1 is open from `codex/integrate/bead-27-main-ready` to `main`; merge only after repository checks are green.
+- Bead 28 branch `codex/deploy/trackbaseline-domain` is active for committing the domain config/docs after successful Cloudflare deployment.
 
 ## Commands To Re-run
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
@@ -60,6 +62,7 @@
 - BrandOS validation: `scripts/audit_skill_pack.py`, `scripts/validate_prose.py workflows`, `bash scripts/compile_prose.sh`, `scripts/check_stage_gates.py examples/shogun-sauce/workspace`, `python3 -m py_compile`, `bash -n`, `make verify-library`, and `make verify-codex` all passed; `make verify-codex` retains optional missing-agent warnings only.
 - Integration validation for PR #1: `make verify-all`, `git diff --check`, `git diff --cached --check`, `node` JSONL parse, `cd web && npm audit --audit-level=high`, and local Worker smokes for `/api/health`, `/`, `/docs/mcp`, `/mcp`, `/.well-known/oauth-protected-resource`, `/assets/baseline-court-serve.png`, and `POST /api/checkout` passed.
 - CI hardening: GitHub Actions initially caught a Swift 6 strict-concurrency failure in the macOS app (`[String: Any]` MCP payload crossing actor isolation). `BaselineMCPClient` is now `@MainActor`, and `make mac-build` runs `swift build -Xswiftc -strict-concurrency=complete`.
+- Bead 28 validation: `make verify-all`, `cd web && npm audit --audit-level=high`, `git diff --check`, Wrangler dry run, Wrangler deploy, DNS checks, apex/`www`/workers.dev health checks, landing markers, MCP docs, MCP unauth challenge, OAuth protected-resource metadata, hero asset, and checkout fail-closed smoke all passed.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and should not print secret values.

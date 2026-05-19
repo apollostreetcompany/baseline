@@ -3,6 +3,18 @@
   "name": "baseline-ai",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "trackbaseline.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.trackbaseline.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./public"
   },
@@ -11,6 +23,6 @@
     "enabled": true
   },
   "vars": {
-    "APP_URL": "https://baseline-ai.ryan-borker.workers.dev"
+    "APP_URL": "https://trackbaseline.com"
   }
 }

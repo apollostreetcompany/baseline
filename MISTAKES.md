@@ -12,3 +12,4 @@
 - 2026-05-19: Wrangler uploaded an untracked `web/public/.DS_Store` asset during deploy. Add `.DS_Store` to `.gitignore`, remove stray macOS metadata before deploy, and confirm the Wrangler asset count.
 - 2026-05-19: A redesign branch created from an older commit can roll back live Worker routes if deployed directly. Before deploy, compare against the currently deployed surface and preserve newer cloud/auth/MCP files from the active worktree.
 - 2026-05-19: Local SwiftPM can pass while GitHub's newer Swift 6 toolchain rejects non-Sendable payloads. Run the macOS app build with `swift build -Xswiftc -strict-concurrency=complete`.
+- 2026-05-19: Adding custom-domain routes can disable the workers.dev route unless `workers_dev` is set explicitly. Keep `workers_dev: true` when a fallback Worker URL is still useful.
