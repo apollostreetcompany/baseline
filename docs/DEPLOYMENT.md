@@ -25,6 +25,37 @@ Missing optional secrets:
 - `OPENAI_API_KEY`: evaluator uses `local-heuristic` mode until set.
 - `OPENAI_EVALUATOR_MODEL`: defaults to `gpt-5` when `OPENAI_API_KEY` is present.
 - Stripe secrets/payment links: checkout still reports Stripe as unconfigured.
+- `KLAVIYO_PRIVATE_API_KEY`: checkout-start lifecycle events are skipped until configured.
+- `KLAVIYO_REVISION`: defaults to `2026-04-15` when Klaviyo is configured.
+- `BASELINE_MASTER_EMAIL`: optional owner notification destination for checkout-start events.
+
+## 2026-05-19 Brand Landing Assets
+
+- Worker static assets are now configured through `web/wrangler.jsonc` with `assets.directory = "./public"`.
+- Current image assets live under `web/public/assets/` and are uploaded by Wrangler with the Worker.
+- Local verification path:
+
+```sh
+cd web
+npm ci
+npm run typecheck
+npm run dev -- --port 8787
+```
+
+Visual routes checked locally:
+
+- `/`
+- `/blog`
+- `/docs/mcp`
+- `/#pro-monitoring`
+- `/checkout/success`
+- `/checkout/cancel`
+
+Checkout behavior:
+
+- `GET /api/checkout?plan=pro|team` still redirects to payment links when configured, otherwise creates a Stripe Checkout Session when Stripe secrets/price IDs are present.
+- `POST /api/checkout` accepts `{ email, plan, successUrl, cancelUrl }` and returns `{ ok, url }` for the landing-page email form.
+- Klaviyo checkout-start events are best-effort through `ctx.waitUntil`; they must not grant entitlement or block checkout.
 
 ## Live Smoke Test
 

@@ -8,6 +8,7 @@ Live launch surface:
 - Dashboard: https://baseline-ai.ryan-borker.workers.dev/dashboard
 - Admin: https://baseline-ai.ryan-borker.workers.dev/admin
 - MCP docs: https://baseline-ai.ryan-borker.workers.dev/docs/mcp
+- Blog stub: https://baseline-ai.ryan-borker.workers.dev/blog
 - Latest run API: https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
 - Timeline API: https://baseline-ai.ryan-borker.workers.dev/api/runs/timeline
 
@@ -160,7 +161,7 @@ Baseline defaults to local SQLite. Cloud sync sends a small redacted payload: ru
 
 Cloud sync is staged through a local SQLite outbox. Failed uploads remain retryable and visible through `baseline sync status`; `baseline sync push` stages unsynced local runs and retries queued uploads.
 
-The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe checkout is implemented but not live until Stripe credentials or payment links are set as Worker secrets.
+The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe checkout is implemented but not live until Stripe credentials or payment links are set as Worker secrets. The landing-page Pro form can emit best-effort Klaviyo checkout-start events when `KLAVIYO_PRIVATE_API_KEY` is configured, but entitlement remains a separate webhook-backed bead.
 
 ## Deployed Infrastructure
 
