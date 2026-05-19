@@ -59,6 +59,7 @@
 - Bead 27 live smoke: `https://baseline-ai.ryan-borker.workers.dev/api/health` returned `db:true`, `stripe:false`, `token_required:true`, `pro_auth:false`, `pro_tokens:false`, `stripe_webhook:false`; live `/` contained `Your agent forgot`, `Three agents`, `Fourteen probes`, and `In the line`; `/docs/mcp` still served remote MCP docs; `/assets/baseline-court-serve.png` returned `200`; checkout still fails closed until Stripe secrets are set.
 - BrandOS validation: `scripts/audit_skill_pack.py`, `scripts/validate_prose.py workflows`, `bash scripts/compile_prose.sh`, `scripts/check_stage_gates.py examples/shogun-sauce/workspace`, `python3 -m py_compile`, `bash -n`, `make verify-library`, and `make verify-codex` all passed; `make verify-codex` retains optional missing-agent warnings only.
 - Integration validation for PR #1: `make verify-all`, `git diff --check`, `git diff --cached --check`, `node` JSONL parse, `cd web && npm audit --audit-level=high`, and local Worker smokes for `/api/health`, `/`, `/docs/mcp`, `/mcp`, `/.well-known/oauth-protected-resource`, `/assets/baseline-court-serve.png`, and `POST /api/checkout` passed.
+- CI hardening: GitHub Actions initially caught a Swift 6 strict-concurrency failure in the macOS app (`[String: Any]` MCP payload crossing actor isolation). `BaselineMCPClient` is now `@MainActor`, and `make mac-build` runs `swift build -Xswiftc -strict-concurrency=complete`.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and should not print secret values.

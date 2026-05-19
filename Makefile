@@ -13,7 +13,7 @@ web-dev:
 	cd web && npm run dev
 
 mac-build:
-	cd macos/BaselineHotspots && swift build
+	cd macos/BaselineHotspots && swift build -Xswiftc -strict-concurrency=complete
 
 verify: test web-typecheck
 

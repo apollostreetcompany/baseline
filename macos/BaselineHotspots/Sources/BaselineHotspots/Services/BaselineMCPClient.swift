@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 struct BaselineMCPClient {
   var endpoint: URL
   var sessionToken: String
