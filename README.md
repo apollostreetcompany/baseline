@@ -16,7 +16,7 @@ Live launch surface:
 ## Install
 
 ```sh
-go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
+curl -fsSL https://trackbaseline.com/install.sh | sh
 baseline setup
 ```
 
@@ -208,12 +208,13 @@ The admin page versions canonical question sets in Neon and can evaluate the lat
 
 ## Distribution
 
-- Go: `go install github.com/apollostreetcompany/baseline/cmd/baseline@latest`
-- npm/pnpm wrapper: `package/` publishes `@baseline-ai/cli`
-- OpenClaw bundle: `openclaw-plugin/` installs with `openclaw plugins install ./openclaw-plugin`
+- Install script: `https://trackbaseline.com/install.sh` downloads release binaries from GitHub Releases, verifies `checksums.txt`, and installs to `~/.local/bin`.
+- GitHub Release assets: macOS arm64/x86_64 and Linux arm64/x86_64 tarballs built by `.github/workflows/release.yml`.
+- npm/pnpm wrapper: `package/` publishes `@baseline-ai/cli`, which auto-downloads the matching release binary when no local `baseline` is present.
+- OpenClaw bundle: release artifact `baseline-openclaw-plugin.tgz`, also installable from `openclaw-plugin/` during development.
 
 See `docs/PUBLISHING.md` for release and verification steps.
 
-## Current Blocker
+## Production Pro Status
 
-The Pro code path is implemented, but production still needs secrets and live Stripe/Klaviyo configuration before paid users can self-serve: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, and `KLAVIYO_PRIVATE_API_KEY`.
+Production Worker secrets are configured for Stripe Checkout, Stripe webhooks, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. The remaining paid-pilot check is an end-to-end live checkout/magic-link/workspace-token/sync smoke with a real invited account.

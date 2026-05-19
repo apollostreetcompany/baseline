@@ -1,30 +1,48 @@
 # Publishing Baseline
 
-Baseline has three distribution surfaces: the Go module/binary, the npm wrapper,
-and the OpenClaw plugin bundle.
+Baseline has four distribution surfaces: the hosted install script, GitHub
+Release binaries, the npm wrapper, and the OpenClaw plugin bundle. The binary is
+free to install; Pro billing gates cloud history, workspace tokens, remote MCP
+account operations, monitoring, and retention.
 
-## Go Module
+## GitHub Release Binaries
 
-The module path must continue to match `go.mod`:
+The release workflow builds macOS and Linux tarballs, checksum files, and the
+OpenClaw plugin tarball whenever a `v*` tag is pushed.
 
 ```sh
-go mod tidy
-go test ./...
+make verify-all
+bash scripts/build-release.sh
 git tag v0.1.0
 git push origin v0.1.0
-GOPROXY=proxy.golang.org go list -m github.com/apollostreetcompany/baseline@v0.1.0
+gh release view v0.1.0 --web
 ```
 
-Users can install the binary with:
+Artifacts:
+
+- `baseline_Darwin_arm64.tar.gz`
+- `baseline_Darwin_x86_64.tar.gz`
+- `baseline_Linux_arm64.tar.gz`
+- `baseline_Linux_x86_64.tar.gz`
+- `baseline-openclaw-plugin.tgz`
+- `checksums.txt`
+
+The public install script at `https://trackbaseline.com/install.sh` downloads
+from GitHub Releases, verifies the checksum entry, and installs to
+`~/.local/bin` by default:
 
 ```sh
-go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
+curl -fsSL https://trackbaseline.com/install.sh | sh
+curl -fsSL https://trackbaseline.com/install.sh | BASELINE_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://trackbaseline.com/install.sh | BASELINE_VERSION=v0.1.0 sh
 ```
 
 ## npm Wrapper
 
 The package in `package/` publishes a `baseline` bin shim. It forwards to an
-installed Go binary found through `BASELINE_BIN`, `./bin/baseline`, or `PATH`.
+installed binary found through `BASELINE_BIN`, `./bin/baseline`, or `PATH`. When
+none is present, it downloads and verifies the matching GitHub Release asset,
+then caches it under `~/.cache/baseline-ai/bin/<platform>-<arch>/baseline`.
 
 Pre-publish checks:
 
@@ -45,6 +63,9 @@ Publish:
 ```sh
 pnpm --dir package publish --access public
 ```
+
+Set `BASELINE_VERSION=v0.1.0` when testing the wrapper against a specific
+release instead of `latest`.
 
 ## OpenClaw Plugin
 
@@ -70,7 +91,7 @@ register the MCP server directly:
 openclaw mcp set baseline '{"command":"baseline","args":["serve","mcp"]}'
 ```
 
-Tarball distribution:
+Tarball distribution from the release artifact:
 
 ```sh
 tar -czf baseline-openclaw-plugin-v0.1.0.tgz -C openclaw-plugin .

@@ -2,15 +2,22 @@
 
 Small npm/pnpm wrapper for the Baseline v0.1 Go CLI and MCP server.
 
-This package does not vendor the Go application yet. It finds an installed `baseline`
-binary and forwards all arguments to it. If no binary is found, it exits with the
-supported install commands.
+The wrapper finds an installed `baseline` binary and forwards all arguments to it.
+If no binary is present, it downloads the matching macOS/Linux release tarball
+from GitHub Releases, verifies `checksums.txt`, caches it under
+`~/.cache/baseline-ai`, and then runs it.
 
 ## Install
 
 ```sh
 pnpm add -g @baseline-ai/cli
-go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
+baseline setup
+```
+
+Direct install without npm:
+
+```sh
+curl -fsSL https://trackbaseline.com/install.sh | sh
 ```
 
 ## Local OpenClaw Dogfood

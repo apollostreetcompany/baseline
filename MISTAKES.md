@@ -13,3 +13,4 @@
 - 2026-05-19: A redesign branch created from an older commit can roll back live Worker routes if deployed directly. Before deploy, compare against the currently deployed surface and preserve newer cloud/auth/MCP files from the active worktree.
 - 2026-05-19: Local SwiftPM can pass while GitHub's newer Swift 6 toolchain rejects non-Sendable payloads. Run the macOS app build with `swift build -Xswiftc -strict-concurrency=complete`.
 - 2026-05-19: Adding custom-domain routes can disable the workers.dev route unless `workers_dev` is set explicitly. Keep `workers_dev: true` when a fallback Worker URL is still useful.
+- 2026-05-19: Do not use broad `rg`/`cat` over `.env` files. Even if the chat does not display tool output, command output can expose live payment or lifecycle keys in logs. Use presence-only commands such as `awk -F= '{print $1"=set"}'` or pass values directly to secret managers without printing.

@@ -36,6 +36,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 27 preserves the deployed Bead 25 cloud account and remote MCP surface while replacing the homepage with the `landing-a` design/assets from `/Users/kikimac/Downloads/baseline.zip`; the latest Cloudflare Worker deploy is version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 - BrandOS on this machine must use `python3` and the bundled `.prose` validator fallback when `prose` or PyYAML are unavailable; the local `brand-os-studio` skill has been repaired accordingly.
 - Bead 28 makes `https://trackbaseline.com` the canonical production URL, attaches `trackbaseline.com` and `www.trackbaseline.com` as Cloudflare Worker custom domains, keeps the workers.dev fallback route enabled, and sets Worker `APP_URL` to the apex domain.
+- Bead 29 distribution decision: keep the local CLI binary free and easy to install; charge Pro for hosted history, workspace tokens, remote MCP account operations, monitoring, billing lifecycle, and retention. The first public download path is GitHub Releases plus `https://trackbaseline.com/install.sh`, with npm as an auto-downloading wrapper and Homebrew as a later tap.
 
 ## State
 ### Done
@@ -68,12 +69,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 27: Rebuilt the homepage to match `landing-a`, preserved Bead 25 cloud routes/schema, repaired the local BrandOS skill runtime assumptions, and deployed Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 - [x] Integration: Opened PR #1 (`https://github.com/apollostreetcompany/baseline/pull/1`) from `codex/integrate/bead-27-main-ready` to merge Bead 25 cloud/Mac functionality and Bead 27 Landing A into `main`.
 - [x] Bead 28: Deployed the Cloudflare Worker to `https://trackbaseline.com` and `https://www.trackbaseline.com`, verified DNS, health, landing, MCP docs/auth challenge, protected-resource metadata, asset, checkout fail-closed, and fallback workers.dev route. Latest Worker deploy version: `0d0924c3-5c8e-4029-9327-369a73588786`.
+- [x] Bead 29: Added the public distribution path (`install.sh`, GitHub Release workflow, npm auto-download wrapper), configured production Stripe/Klaviyo/auth/token secrets, deployed Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`, and published GitHub Release `v0.1.0`.
 
 ### Now
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
+- Public install works through `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release `v0.1.0` assets and checksums. The npm wrapper can auto-download the same release, but the npm package is not published yet because this machine is not logged into npm.
 - CI now includes a macOS `verify` workflow for PRs, and local `make mac-build` uses Swift strict concurrency to match GitHub's Swift 6 behavior.
-- Bead 26 remains the next production work after merge: configure Pro secrets (`MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET`, Klaviyo), then run an end-to-end invited account checkout/token/sync test. Risk class: High because it activates live auth and billing.
-- `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
+- Production Pro configuration is active: Stripe Checkout prices are set for Pro `$39/mo` and Team `$129/mo`, Stripe webhook signature verification is configured, Klaviyo lifecycle email is configured, and magic-link/session/workspace-token HMAC secrets are configured.
+- `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`.
 - Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
 - First real OpenClaw eval `run_dil295nlwpug` completed with status warning, health 92, 14 Baseline Core probes, and one slow `ops_change` warning at 95026ms. A later scheduled run `run_dil2s3gle45k` did fire but failed preflight from `/` with launchd's stripped PATH; `baseline latest` and `baseline status` now point back to the real eval instead of that preflight-only failure.
 - MCP `baseline_run`, `baseline_setup`, and `baseline_schedule action=run` now return quickly with a lifecycle `run_status.run_id`; agents should poll `baseline_report` for completion instead of holding the MCP call open for the whole eval. If the child process disappears before a DB row is written, `baseline_report`/`baseline report` marks the run failed, includes stdout/stderr paths, and suggests `baseline rerun RUN_ID`.
@@ -83,14 +86,15 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `baseline doctor` now surfaces the current OpenClaw memory-search redacted placeholder as a warning instead of passing silently: `openclaw.memory.redacted_key`. This is separate from Google/Gemini search config and should be repaired through OpenClaw's secret/config path, not by removing providers.
 
 ### Next
-- Bead 26: Production secret setup and end-to-end Pro pilot smoke.
-- Distribution bead: publish signed GitHub Release binaries, then a Homebrew tap for the persistent macOS CLI install, with the npm package remaining a thin `npx`/CI wrapper.
+- End-to-end Pro pilot smoke with a real invited account: checkout, webhook entitlement, magic-link login, workspace token creation, redacted sync, history/hotspot/compare, and remote MCP account status.
+- Publish `@baseline-ai/cli` once npm auth for the `@baseline-ai` scope is available; the package is ready and `npm pack --dry-run` passes.
+- Create a Homebrew tap for persistent macOS installs after the first pilot users validate the install script.
 - Later sequence: app-level retention enforcement, OpenClaw runner pack, MCP schema drift testing against target clients, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
-- Which Stripe plan IDs or payment links should be used for Pro and Team?
-- Production `STRIPE_PRICE_ID_PRO` is still unset, so paid pilot checkout cannot be activated yet.
-- Production `MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, and `STRIPE_WEBHOOK_SECRET` are still unset, so live account auth/token/webhook flows are deployed but inactive/fail closed.
+- Which real pilot email should receive the first invite and live checkout test?
+- Which npm account/org should publish the `@baseline-ai/cli` package?
+- Should Homebrew live under `apollostreetcompany/homebrew-tap` or a dedicated `trackbaseline/homebrew-tap` repo?
 - What separate admin token should replace the temporary dogfood reuse of the sync token?
 - Which OpenAI evaluator key/model should be used for paid pilot evaluation?
 - Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
