@@ -283,6 +283,77 @@ Results:
 - Uploaded hero image returned `HTTP/2 200`.
 - Checkout fallback returned `{"ok":false,"error":"Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links."}`.
 
+## 2026-05-19 Distribution Activation
+
+Baseline distribution is intentionally separate from Pro billing:
+
+- Free local runner: `https://trackbaseline.com/install.sh` installs the latest release binary.
+- Paid Pro account: Stripe Checkout grants hosted history, workspace tokens, remote MCP account operations, monitoring, and billing-backed retention.
+- The binary should not be paywalled for the first launch; paywalling the executable would increase install friction before users see a local drift report.
+
+Release preflight:
+
+```sh
+make verify-all
+bash scripts/build-release.sh
+ls dist
+```
+
+Release publish:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+gh release view v0.1.0
+```
+
+Install smoke after the release exists:
+
+```sh
+tmp_home="$(mktemp -d)"
+HOME="$tmp_home" curl -fsSL https://trackbaseline.com/install.sh | HOME="$tmp_home" sh
+"$tmp_home/.local/bin/baseline" doctor
+```
+
+Rollback:
+
+- Delete or mark the bad GitHub Release as prerelease.
+- Publish a fixed tag and update public docs to the new pinned `BASELINE_VERSION` if needed.
+- Existing installed binaries remain local; Pro sync can be disabled with `baseline sync off` if a cloud issue is discovered.
+
+## 2026-05-19 Production Pro Secret Activation
+
+Secrets are configured through Wrangler and must never be printed in logs. On 2026-05-19 the production Worker was configured with:
+
+- Stripe Checkout secret key from Hermes `.env`.
+- Pro monthly price: `price_1TYkoGG0PuTic3wedLLYoZYS` at `$39/mo`.
+- Team monthly price: `price_1TYkoHG0PuTic3weoX9qhMFP` at `$129/mo`.
+- Stripe webhook endpoint: `we_1TYkp0G0PuTic3wegF1qVMpx` for `https://trackbaseline.com/api/stripe/webhook`.
+- Generated magic-link and token HMAC secrets.
+- Klaviyo private API key from Hermes `.env`.
+
+Verification:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -sS -X POST https://trackbaseline.com/api/checkout \
+  -H 'content-type: application/json' \
+  --data '{"email":"pilot@example.com","plan":"pro"}'
+curl -i -sS -X POST https://trackbaseline.com/api/stripe/webhook \
+  -H 'content-type: application/json' \
+  --data '{}'
+```
+
+Expected:
+
+- Health returns `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Checkout returns a Stripe Checkout URL without completing payment.
+- Unsigned webhook requests fail closed with `400` or `401`.
+
+Deployment result:
+
+- Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0` serves the updated install docs and `/install.sh` asset on `trackbaseline.com`.
+
 ## 2026-05-19 Landing A Redesign And BrandOS Repair
 
 Bead 27 replaces the homepage with a Worker-native port of `/Users/kikimac/Downloads/baseline.zip` `landing-a.jsx` and reuses the supplied court robot image assets already present under `web/public/assets/`. The deploy intentionally preserves Bead 25 cloud account, token, webhook, history, comparison, and remote MCP routes.

@@ -698,7 +698,7 @@ function landingPage(env: Env): string {
           </div>
           <div class="terminalSample">
             <p class="eyebrow">Installs in seconds</p>
-            <pre class="codeBlock"><code><span class="cmt">$</span> brew install trackbaseline/tap/baseline
+            <pre class="codeBlock"><code><span class="cmt">$</span> curl -fsSL https://trackbaseline.com/install.sh | sh
 <span class="cmt">$</span> baseline run
 <span class="key">-&gt;</span> run_8f2c . score 92 . 11 ok / 3 watch / 0 fail
 <span class="cmt">#</span> watch: <span class="key">mcp.openclaw.config</span> drifted from baseline_clean-local
@@ -1049,18 +1049,22 @@ function adminPage(env: Env): string {
 }
 
 function mcpDocsPage(env: Env): string {
-  const install = `go build -o bin/baseline ./cmd/baseline
-./bin/baseline setup
-./bin/baseline report
-./bin/baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
+  const install = `curl -fsSL ${baseURL(env)}/install.sh | sh
+baseline setup
+baseline report
+baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
 openclaw mcp list
-./bin/baseline compare`;
+baseline compare`;
   return layout(env, "Baseline MCP installation", `
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
       <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. Doctor is local preflight; setup and run start the operator-approved default eval in the background and write local markdown artifacts.</p>
+      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. The CLI binary is a free local runner; Pro charges for cloud history, workspace tokens, remote MCP account operations, monitoring, and billing-backed retention.</p>
       <pre><code>${escapeHTML(install)}</code></pre>
+      <h2>Distribution</h2>
+      <p>The installer downloads the latest checksummed release asset for macOS or Linux from GitHub Releases, verifies <code>checksums.txt</code>, and installs <code>baseline</code> into <code>~/.local/bin</code> by default. Set <code>BASELINE_INSTALL_DIR</code> for a different destination or <code>BASELINE_VERSION</code> for a pinned release.</p>
+      <pre><code>curl -fsSL ${escapeHTML(baseURL(env))}/install.sh | BASELINE_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL ${escapeHTML(baseURL(env))}/install.sh | BASELINE_VERSION=v0.1.0 sh</code></pre>
       <h2>Cloud sync</h2>
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
 baseline doctor
