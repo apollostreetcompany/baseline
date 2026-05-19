@@ -224,6 +224,23 @@ func (s *runState) observeNumber(key string, value float64) {
 
 func (s *runState) checkRuntime() {
 	start := time.Now()
+	if s.cfg.Target.Runtime == "hermes" {
+		path, err := exec.LookPath("hermes")
+		if err != nil {
+			s.addCheck("runtime.hermes", "core", "environment", "critical", 2, 20, start, "Hermes binary was not found on PATH.", nil)
+			return
+		}
+		version, err := commandOutput(s.ctx, 5*time.Second, path, "--version")
+		if err != nil {
+			s.addCheck("runtime.hermes", "core", "environment", "warning", 1, 72, start, "Hermes exists but version check failed: "+err.Error(), nil)
+			return
+		}
+		version = strings.TrimSpace(version)
+		s.observe("runtime.hermes.path", path, path)
+		s.observe("runtime.hermes.version", version, version)
+		s.addCheck("runtime.hermes", "core", "environment", "ok", 0, 100, start, "Hermes runtime detected: "+version, nil)
+		return
+	}
 	if s.cfg.Target.Runtime == "custom" {
 		if strings.TrimSpace(s.cfg.AgentCommand) != "" || strings.TrimSpace(s.opts.AgentCommand) != "" || strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND")) != "" {
 			s.observe("runtime.custom.command", "configured", "configured")
@@ -316,6 +333,11 @@ func (s *runState) checkTargetConfig() {
 	start := time.Now()
 	target := s.cfg.Target
 	switch target.Runtime {
+	case "hermes":
+		if _, err := exec.LookPath("hermes"); err != nil {
+			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target is Hermes, but the hermes binary is not on PATH.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
+			return
+		}
 	case "openclaw":
 		if _, err := exec.LookPath("openclaw"); err != nil {
 			s.addCheck("target.config", "baseline", "configuration", "critical", 2, 20, start, "Target is OpenClaw, but the openclaw binary is not on PATH.", map[string]float64{"timeout_seconds": float64(targetTimeoutSeconds(target))})
@@ -480,6 +502,9 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 			s.observeNumber("question."+q.PackID+"."+q.ID+".total_tokens", float64(*result.TotalTokens))
 		}
 		s.observe("question."+q.PackID+"."+q.ID+".token_status", result.TokenStatus, result.TokenStatus)
+		if result.SessionID != "" {
+			s.observe("question."+q.PackID+"."+q.ID+".session_id", result.SessionID, result.SessionID)
+		}
 	} else {
 		s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
 	}
@@ -493,6 +518,7 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 		ExpectedBehavior: q.ExpectedBehavior,
 		Output:           result.Output,
 		ScrubbedOutput:   scrubbed,
+		SessionID:        result.SessionID,
 		DurationMS:       duration,
 		Status:           "ok",
 	}
@@ -559,19 +585,21 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 		command = strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND"))
 	}
 	if command != "" {
-		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
+		timeoutSeconds := targetTimeoutSeconds(s.cfg.Target)
+		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(timeoutSeconds)*time.Second)
 		defer cancel()
+		sendAt := time.Now().UTC()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
 		cmd.Dir = s.commandDir()
-		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+q.Prompt)
-		sendAt := time.Now().UTC()
+		cmd.Env = append(os.Environ(), append(probeDeadlineEnv(s.runID, q, timeoutSeconds, sendAt), "BASELINE_PROMPT="+baselinePromptForProbe(q.Prompt))...)
 		out, err := cmd.CombinedOutput()
 		receivedAt := time.Now().UTC()
+		output, sessionID := extractBaselineSessionID(string(out))
 		msg := ProbeMessage{
 			RunID:              s.runID,
 			PackID:             q.PackID,
 			ProbeID:            q.ID,
-			SessionID:          "",
+			SessionID:          sessionID,
 			SystemSendAt:       sendAt,
 			BaselineReceivedAt: receivedAt,
 			DurationMS:         receivedAt.Sub(sendAt).Milliseconds(),
@@ -579,12 +607,15 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 			TokenSource:        "custom agent command",
 		}
 		if ctx.Err() == context.DeadlineExceeded {
-			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("agent command timed out")
+			return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("agent command timed out")
 		}
 		if err != nil {
-			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+			return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("%w: %s", err, strings.TrimSpace(output))
 		}
-		return AgentProbeResult{Output: string(out), ProbeMessage: msg}, nil
+		return AgentProbeResult{Output: output, ProbeMessage: msg}, nil
+	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return runHermesProbeWithTarget(s.ctx, s.runID, q, s.cfg.Target, s.commandDir())
 	}
 	path, err := exec.LookPath("openclaw")
 	if err != nil {
@@ -616,6 +647,9 @@ func (s *runState) askAgent(prompt string) (string, error) {
 		}
 		return string(out), nil
 	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return runHermesPrompt(s.ctx, prompt, s.cfg.Target, s.commandDir())
+	}
 	path, err := exec.LookPath("openclaw")
 	if err != nil {
 		return "", err
@@ -626,6 +660,9 @@ func (s *runState) askAgent(prompt string) (string, error) {
 func (s *runState) agentKind() string {
 	if s.opts.AgentCommand != "" || s.cfg.AgentCommand != "" || os.Getenv("BASELINE_AGENT_COMMAND") != "" {
 		return "custom"
+	}
+	if s.cfg.Target.Runtime == "hermes" {
+		return "hermes"
 	}
 	if _, err := exec.LookPath("openclaw"); err == nil {
 		return "openclaw"

@@ -3,6 +3,9 @@
   "name": "baseline-ai",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
+  "assets": {
+    "directory": "./public"
+  },
   "account_id": "3a0bfe287d4dfb27f802ee5d7e4b21e1",
   "observability": {
     "enabled": true

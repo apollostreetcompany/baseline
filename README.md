@@ -8,6 +8,8 @@ Live launch surface:
 - Dashboard: https://baseline-ai.ryan-borker.workers.dev/dashboard
 - Admin: https://baseline-ai.ryan-borker.workers.dev/admin
 - MCP docs: https://baseline-ai.ryan-borker.workers.dev/docs/mcp
+- Blog stub: https://baseline-ai.ryan-borker.workers.dev/blog
+- Remote MCP: https://baseline-ai.ryan-borker.workers.dev/mcp
 - Latest run API: https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
 - Timeline API: https://baseline-ai.ryan-borker.workers.dev/api/runs/timeline
 
@@ -48,6 +50,37 @@ Optional sync setup stays explicit:
 
 ```sh
 baseline sync on --url https://baseline-ai.ryan-borker.workers.dev --token <token>
+```
+
+For Pro, that token should now be a workspace token created from an invited account session. The old global dogfood token still works as a temporary fallback, but it is not the customer path.
+
+## Pro Cloud Account Path
+
+Baseline Pro is Cloudflare Worker + Neon first. The Worker stores users, accounts, sessions, workspaces, HMAC-hashed workspace tokens, Stripe subscriptions, entitlements, audit events, lifecycle outbox rows, self-history runs, and aggregate-safe comparison fields.
+
+Primary account routes:
+
+- `POST /api/admin/invites`: admin-only invite and optional pilot grant.
+- `POST /api/auth/magic-link`: request a magic link for an invited email.
+- `POST /api/auth/consume`: exchange a magic-link token for an account session.
+- `GET /api/account/status`: account and entitlement status.
+- `GET|POST /api/workspaces`: list or create account workspaces.
+- `POST /api/tokens`: create a one-time visible workspace ingest token.
+- `POST /api/tokens/revoke`: revoke with `confirm: "revoke <token_id>"`.
+- `GET /api/history`, `/api/hotspots`, `/api/compare`: self-history and hotspot APIs.
+- `POST /api/stripe/webhook`: raw Stripe signature verification and idempotent entitlement updates.
+- `POST /mcp`: Streamable-HTTP-style JSON-RPC remote MCP adapter over account, workspace, history, hotspot, compare, subscription, and owner support tools.
+
+Billing management uses Stripe Checkout and the Stripe Billing Portal. Baseline does not cancel subscriptions directly through MCP.
+
+## macOS Hotspot App
+
+A SwiftUI macOS client lives in `macos/BaselineHotspots`. It signs in with a magic link, connects to the remote MCP, shows the run timeline and hotspots, and generates an operator insight from cloud redacted summaries. It tries local agent provider bridges first (`hermes`/`openclaw` where available), then falls back to the user's OpenRouter API key and model stored in macOS Keychain.
+
+Build:
+
+```sh
+make mac-build
 ```
 
 ## Good Baselines
@@ -113,11 +146,15 @@ baseline config set api_base_url <url>
 baseline config set api_token <token>
 baseline config set target.model_policy pinned
 baseline config set target.pinned_model openai/gpt-5.5
+baseline config set target.runtime hermes
+baseline config set target.runtime custom
 baseline config set agent_command '<advanced command using BASELINE_PROMPT>'
 baseline config set monitor_packs.workflow_test.enabled true
 baseline config set monitor_packs.self_log_execution.enabled false
 baseline config validate --json
 ```
+
+Hermes native mode (`target.runtime hermes`) shells directly to `hermes chat -Q -q <prompt>` with the current Hermes model. Use `target.model_policy pinned` plus `target.pinned_model` when a run should pass `-m` to Hermes. Custom mode remains available for arbitrary commands; Baseline sets `BASELINE_PROMPT` before invoking `agent_command`.
 
 ## MCP Tools
 
@@ -156,14 +193,14 @@ Baseline defaults to local SQLite. Cloud sync sends a small redacted payload: ru
 
 Cloud sync is staged through a local SQLite outbox. Failed uploads remain retryable and visible through `baseline sync status`; `baseline sync push` stages unsynced local runs and retries queued uploads.
 
-The deployed ingest API fails closed unless `BASELINE_API_TOKEN` matches. Stripe checkout is implemented but not live until Stripe credentials or payment links are set as Worker secrets.
+The deployed ingest API accepts either the temporary global dogfood token or a Pro workspace token. Pro tokens are stored in Neon as prefix plus HMAC hash only. Stripe checkout and webhooks are implemented but not live until Stripe credentials, price IDs, webhook secret, magic-link secret, token HMAC secret, and Klaviyo credentials are set as Worker secrets.
 
 ## Deployed Infrastructure
 
 - Cloudflare Worker: `baseline-ai`
 - Worker URL: https://baseline-ai.ryan-borker.workers.dev
 - Neon project: `baseline-v0` (`summer-cake-63602849`)
-- Neon tables: `baseline_runs`, `baseline_events`, `canonical_question_sets`, `llm_evaluations`
+- Neon tables: `baseline_runs`, `baseline_events`, `canonical_question_sets`, `llm_evaluations`, plus Pro account/billing tables in `web/schema.sql`.
 
 ## Admin and Evaluator
 
@@ -179,4 +216,4 @@ See `docs/PUBLISHING.md` for release and verification steps.
 
 ## Current Blocker
 
-Payment buttons route to `/api/checkout`, but checkout returns `503` because no Stripe secret, price IDs, or payment links were available in the environment.
+The Pro code path is implemented, but production still needs secrets and live Stripe/Klaviyo configuration before paid users can self-serve: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET`, `MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, and `KLAVIYO_PRIVATE_API_KEY`.

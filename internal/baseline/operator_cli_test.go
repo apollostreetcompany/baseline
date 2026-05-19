@@ -10,6 +10,12 @@ import (
 func TestRunCLIStartsLongNonInteractiveRunsInBackground(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	t.Setenv("BASELINE_ASYNC_EXE", "/bin/echo")
+	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
+	cfg.Target.Packs = "enabled"
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code := cmdRun(t.Context(), []string{"--packs", "enabled"}, &stdout, &stderr)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -297,6 +298,9 @@ func parseConfigValue(value string, strict bool) (any, error) {
 	case "null":
 		return nil, nil
 	}
+	if parsed, err := strconv.Atoi(value); err == nil {
+		return parsed, nil
+	}
 	return value, nil
 }
 
@@ -317,9 +321,9 @@ func validateConfig(cfg Config) []string {
 		}
 	}
 	switch cfg.Target.Runtime {
-	case "openclaw", "custom":
+	case "openclaw", "custom", "hermes":
 	default:
-		issues = append(issues, "target.runtime must be openclaw or custom")
+		issues = append(issues, "target.runtime must be openclaw, custom, or hermes")
 	}
 	if cfg.Target.Entity == "" {
 		issues = append(issues, "target.entity is missing")

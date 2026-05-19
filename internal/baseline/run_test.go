@@ -57,6 +57,7 @@ func TestBootstrapQuestionProbesUseBoundedConcurrency(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	t.Setenv("BASELINE_PROBE_CONCURRENCY", "4")
 	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
 	cfg.AgentCommand = "sleep 0.2; printf baseline"
 	if err := saveConfig(cfg); err != nil {
 		t.Fatal(err)
@@ -171,4 +172,60 @@ func TestRecordedQuestionCheckUsesProbeDuration(t *testing.T) {
 	if state.checks[0].DurationMS != 123 || state.checks[0].Metrics["duration_ms"] != 123 {
 		t.Fatalf("check should use measured probe duration, got %+v", state.checks[0])
 	}
+}
+
+func TestCustomAgentCommandReceivesDeadlineEnvAndRecordsHermesSessionID(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "env.txt")
+	promptFile := filepath.Join(dir, "prompt.txt")
+	command := "printenv | grep '^BASELINE_\\|^OTEL_RESOURCE_ATTRIBUTES=' | sort > " + quoteShell(envFile) + "; printf '%s' \"$BASELINE_PROMPT\" > " + quoteShell(promptFile) + "; printf 'baseline ok\\nBASELINE_HERMES_SESSION_ID: custom_session_456\\n'"
+	state := &runState{
+		ctx:   context.Background(),
+		runID: "run_custom",
+		cfg: Config{
+			AgentCommand: command,
+			Target:       BaselineTarget{Runtime: "custom", TimeoutSeconds: 45},
+		},
+		opts: RunOptions{Workspace: dir},
+	}
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.name=custom-test")
+	result, err := state.askAgentMeasured(Question{PackID: "baseline", ID: "memory", Prompt: "What changed?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "baseline ok\n" {
+		t.Fatalf("expected marker-stripped output, got %q", result.Output)
+	}
+	if result.SessionID != "custom_session_456" {
+		t.Fatalf("expected custom command session id to be recorded, got %+v", result.ProbeMessage)
+	}
+	promptBytes, err := os.ReadFile(promptFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(promptBytes), "Baseline harness observability instruction") {
+		t.Fatalf("custom command prompt did not include observability instruction: %s", promptBytes)
+	}
+	envBytes, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envText := string(envBytes)
+	for _, want := range []string{
+		"BASELINE_RUN_ID=run_custom",
+		"BASELINE_PACK_ID=baseline",
+		"BASELINE_PROBE_ID=memory",
+		"BASELINE_TIMEOUT_SECONDS=45",
+		"BASELINE_EVAL_MODE=1",
+		"BASELINE_DEADLINE_AT=",
+		"OTEL_RESOURCE_ATTRIBUTES=service.name=custom-test,baseline.run_id=run_custom,baseline.pack_id=baseline,baseline.probe_id=memory",
+	} {
+		if !strings.Contains(envText, want) {
+			t.Fatalf("expected env %q in:\n%s", want, envText)
+		}
+	}
+}
+
+func quoteShell(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
