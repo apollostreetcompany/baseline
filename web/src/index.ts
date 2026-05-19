@@ -692,8 +692,8 @@ function landingPage(env: Env): string {
             <h1>Your agent forgot. Baseline did not.</h1>
             <p class="bodyText heroLede">Probe your agent in seconds to track real-life drift over time. Keep Hermes and OpenClaw dialed, and know before issues reach the work.</p>
             <div class="fieldActions">
-              <a class="btn btnPrimary" href="/docs/mcp">install the cli &rarr;</a>
-              <a class="btn btnGhost" href="/dashboard">watch a run</a>
+              <a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="hero">install the cli &rarr;</a>
+              <a class="btn btnGhost" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="hero">watch a run</a>
             </div>
           </div>
           <div class="terminalSample">
@@ -707,13 +707,13 @@ function landingPage(env: Env): string {
         </div>
       </section>
 
-      <section class="scoreboardSection" aria-labelledby="scoreboard-heading">
+      <section class="scoreboardSection" aria-labelledby="scoreboard-heading" data-fast-scroll="scroll_to_scoreboard">
         <div class="sectionTitleRow">
           <div>
             <p class="eyebrow">Today . across your workstations</p>
             <h2 id="scoreboard-heading">Three agents. One scoreboard.</h2>
           </div>
-          <a class="underLink" href="/dashboard">open dashboard &rarr;</a>
+          <a class="underLink" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="scoreboard">open dashboard &rarr;</a>
         </div>
         ${agentScoreboard()}
       </section>
@@ -742,13 +742,13 @@ function landingPage(env: Env): string {
         </div>
       </section>
 
-      <section class="probesSection" id="probes">
+      <section class="probesSection" id="probes" data-fast-scroll="scroll_to_probes">
         <div class="sectionTitleRow">
           <div>
             <p class="eyebrow">The default set</p>
             <h2>Fourteen probes.</h2>
           </div>
-          <a class="underLink" href="/docs/mcp">read the rubric &rarr;</a>
+          <a class="underLink" href="/docs/mcp" data-fast-goal="docs_click" data-fast-goal-location="probes">read the rubric &rarr;</a>
         </div>
         ${probeRows()}
       </section>
@@ -777,7 +777,7 @@ function landingPage(env: Env): string {
         </figure>
       </section>
 
-      <section class="pricingSection" id="pricing">
+      <section class="pricingSection" id="pricing" data-fast-scroll="scroll_to_pricing">
         <div class="pricingIntro">
           <div>
             <p class="eyebrow">Pricing</p>
@@ -798,7 +798,7 @@ function landingPage(env: Env): string {
             <p class="eyebrow">Field notes</p>
             <h2>From the workstation.</h2>
           </div>
-          <a class="underLink" href="/blog">all notes &rarr;</a>
+          <a class="underLink" href="/blog" data-fast-goal="blog_click" data-fast-goal-location="field_notes">all notes &rarr;</a>
         </div>
         <div class="noteGrid">
           ${noteCard("2026 . 05 . 14", "How to accept a Good Baseline.", "The five-minute review ritual before a run becomes the standard your workstation compares against.")}
@@ -807,13 +807,13 @@ function landingPage(env: Env): string {
         </div>
       </section>
 
-      <section class="closerSection">
+      <section class="closerSection" data-fast-scroll="scroll_to_final_cta">
         <h2>In the line, or out.</h2>
         <div>
           <p class="bodyText">Install the CLI. Run the check once. Accept the run that earns it. That is the first hour with Baseline.</p>
           <div class="fieldActions">
-            <a class="btn paperBtn" href="/docs/mcp">install &rarr;</a>
-            <a class="btn outlinePaperBtn" href="/docs/mcp">read the docs</a>
+            <a class="btn paperBtn" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="final_cta">install &rarr;</a>
+            <a class="btn outlinePaperBtn" href="/docs/mcp" data-fast-goal="docs_click" data-fast-goal-location="final_cta">read the docs</a>
           </div>
         </div>
       </section>
@@ -931,6 +931,10 @@ function stepBlocks(): string {
 }
 
 function priceColumn(name: string, price: string, sub: string, tag: string, features: string[], cta: string, href: string, form: boolean): string {
+  const plan = name.toLowerCase();
+  const goalAttrs = plan === "local"
+    ? `data-fast-goal="install_click" data-fast-goal-plan="local" data-fast-goal-location="pricing"`
+    : `data-fast-goal="checkout_start" data-fast-goal-plan="${plan}" data-fast-goal-price="${price.replace("$", "")}" data-fast-goal-currency="usd" data-fast-goal-location="pricing"`;
   return `<article class="priceCol ${form ? "highlight" : ""}">
     <p class="eyebrow">${tag}</p>
     <h3>${name}</h3>
@@ -940,10 +944,10 @@ function priceColumn(name: string, price: string, sub: string, tag: string, feat
       <form class="checkoutForm" data-checkout-form>
         <label class="srOnly" for="checkout-email">Email for Pro checkout</label>
         <input id="checkout-email" name="email" type="email" autocomplete="email" placeholder="email" required>
-        <button class="btn btnPrimary" type="submit">${cta} &rarr;</button>
+        <button class="btn btnPrimary" type="submit" ${goalAttrs}>${cta} &rarr;</button>
         <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
       </form>
-    ` : `<a class="btn btnGhost" href="${href}">${cta} &rarr;</a>`}
+    ` : `<a class="btn btnGhost" href="${href}" ${goalAttrs}>${cta} &rarr;</a>`}
   </article>`;
 }
 
@@ -981,6 +985,7 @@ function checkoutSuccessPage(env: Env): string {
 baseline sync push</code></pre>
       <p><a class="button primary" href="/dashboard">Open dashboard</a></p>
     </main>
+    <script>window.datafast && window.datafast("checkout_return_success", { plan: "pro", provider: "stripe" });</script>
   `, softwareJsonLD(env));
 }
 
@@ -992,6 +997,7 @@ function checkoutCancelPage(env: Env): string {
       <p>The local Baseline CLI and MCP remain free. Pro is for monitored history, alerting, and team-visible evidence once the local loop is useful.</p>
       <p><a class="button secondary" href="/">Return home</a></p>
     </main>
+    <script>window.datafast && window.datafast("checkout_return_cancel", { plan: "pro", provider: "stripe" });</script>
   `, softwareJsonLD(env));
 }
 
@@ -1140,6 +1146,7 @@ function proAccountScript(): string {
         }
         button.disabled = true;
         write("Opening Stripe checkout...");
+        window.datafast && window.datafast("checkout_start", { plan: "pro", price: "39", currency: "usd", location: "pricing_form" });
         try {
           const response = await fetch("/api/checkout", {
             method: "POST",
@@ -1148,6 +1155,7 @@ function proAccountScript(): string {
           });
           const payload = await response.json();
           if (!response.ok || !payload.url) throw new Error(payload.error || "checkout_failed");
+          window.datafast && window.datafast("checkout_redirect", { plan: "pro", provider: "stripe" });
           window.location.assign(payload.url);
         } catch (error) {
           write("Checkout is not configured yet. The local CLI is still free.");
@@ -1267,12 +1275,23 @@ function layout(env: Env, title: string, body: string, structuredData = ""): str
   <meta property="og:image" content="${escapeHTML(baseURL(env))}/assets/baseline-court-robot.png">
   <style>${css()}</style>
   ${structuredData}
+  <script id="datafast-queue">
+    window.datafast = window.datafast || function() {
+      window.datafast.q = window.datafast.q || [];
+      window.datafast.q.push(arguments);
+    };
+  </script>
+  <script
+    defer
+    data-website-id="dfid_PYprhfTkwwQKhkzRUhVtO"
+    data-domain="trackbaseline.com"
+    src="https://datafa.st/js/script.js"></script>
 </head>
 <body>
   <header class="nav">
     <a href="/" class="brandLockup"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a>
     <nav class="navLinks"><a href="/#the-check">the check</a><a href="/docs/mcp">docs</a><a href="/#pricing">pricing</a><a href="/blog">field notes</a></nav>
-    <div class="navCtas"><a href="/dashboard">sign in</a><a class="btn btnPrimary" href="/docs/mcp">install</a></div>
+    <div class="navCtas"><a href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="nav">sign in</a><a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="nav">install</a></div>
   </header>
   ${body}
   <footer><a href="/" class="brandLockup small"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>2026 TRACKBASELINE.COM</span></footer>

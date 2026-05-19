@@ -1,4 +1,4 @@
-.PHONY: build test web-typecheck web-dev mac-build package-test release-build verify verify-all
+.PHONY: build test web-typecheck web-dev mac-build package-test release-build analytics-report verify verify-all
 
 build:
 	go build -o bin/baseline ./cmd/baseline
@@ -20,6 +20,9 @@ package-test:
 
 release-build:
 	bash scripts/build-release.sh
+
+analytics-report:
+	bash scripts/datafast-funnel-report.sh
 
 verify: test web-typecheck package-test
 
