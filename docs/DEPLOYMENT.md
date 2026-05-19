@@ -104,17 +104,17 @@ Pro ingest behavior:
 - `/api/runs` resolves `account_id` and `workspace_id` from the server-side token row; callers cannot spoof account/workspace IDs.
 - `baseline_runs` keeps legacy dashboard fields and adds nullable `account_id`, `workspace_id`, `expires_at`, `account_private_payload`, and `comparison_scope`.
 
-Mac app companion from the Bead 25 worktree:
+Mac app:
 
-- Source: `macos/BaselineHotspots` in the Bead 25 implementation worktree.
-- Build: `make mac-build` in that worktree.
+- Source: `macos/BaselineHotspots`
+- Build: `make mac-build`
 - Storage: macOS Keychain for session token and OpenRouter API key.
-- Data source: remote MCP first; local SQLite is intentionally not the primary source. The Bead 27 landing worktree only carries the Worker deploy surface needed for the public page.
+- Data source: remote MCP first; local SQLite is intentionally not the primary source.
 
 Preflight before deploy:
 
 ```sh
-make verify
+make verify-all
 cd web && npm run deploy
 curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
 curl -fsS -X POST https://baseline-ai.ryan-borker.workers.dev/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'

@@ -1,14 +1,14 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-27-landing-a-brand-os`.
-- Worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`.
+- Working branch: `codex/integrate/bead-27-main-ready`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
   - Bead 24: refreshed Worker deployed to https://baseline-ai.ryan-borker.workers.dev at version `5cc879a3-983d-4e59-a620-e8abd8d70a99`.
   - Bead 25: cloud accounts, Stripe/Klaviyo entitlement lifecycle, account-scoped tokens, remote MCP, SwiftUI macOS hotspot client, skill audit, and Worker deployment version `dfc2198f-9151-4a64-8511-4e25d3c2d529`.
   - Bead 27: `landing-a` homepage redesign plus local BrandOS runtime repair, deployed to Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
+  - Integration: combine Bead 25 cloud/Mac app functionality with Bead 27 landing before PR to `main`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
@@ -32,14 +32,15 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 27 implementation is complete locally, deployed, and recorded with implementation commit `964bd52`.
+- Integration branch is active: validate and open a PR to merge both Bead 25 and Bead 27 to `main`.
 
 ## Commands To Re-run
-- `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`
-- `make verify`
+- `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
+- `make verify-all`
 - `cd web && npm run typecheck`
 - `cd web && npm run dev`
 - `go test ./...`
+- `cd macos/BaselineHotspots && swift build`
 - `cd web && npm audit --audit-level=high`
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/skills-library && make verify-library && make verify-codex`
 
