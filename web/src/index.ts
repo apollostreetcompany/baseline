@@ -1,8 +1,17 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import {
+  appendCheckoutMetadata,
+  ensureCloudSchema,
+  handleCloudRoute,
+  prepareCheckoutAccount,
+  recordRunAggregates,
+  resolveRunIngestContext
+} from "./cloud";
 
 interface Env {
   DATABASE_URL?: string;
   STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID_PRO?: string;
   STRIPE_PRICE_ID_TEAM?: string;
   STRIPE_PAYMENT_LINK_PRO?: string;
@@ -13,6 +22,11 @@ interface Env {
   APP_URL?: string;
   BASELINE_API_TOKEN?: string;
   BASELINE_ADMIN_TOKEN?: string;
+  MAGIC_LINK_SECRET?: string;
+  TOKEN_HMAC_SECRET?: string;
+  MAGIC_LINK_DEV_ECHO?: string;
+  PRO_RETENTION_DAYS?: string;
+  FREE_RETENTION_DAYS?: string;
   OPENAI_API_KEY?: string;
   OPENAI_EVALUATOR_MODEL?: string;
 }
@@ -58,6 +72,8 @@ export default {
     const url = new URL(request.url);
     const read = request.method === "GET" || request.method === "HEAD";
     try {
+      const cloudResponse = await handleCloudRoute(request, env, ctx);
+      if (cloudResponse) return cloudResponse;
       if (read && url.pathname === "/") return html(landingPage(env));
       if (read && url.pathname === "/dashboard") return html(dashboardPage(env));
       if (read && url.pathname === "/admin") return html(adminPage(env));
@@ -69,7 +85,7 @@ export default {
       if (read && url.pathname === "/terms") return html(termsPage(env));
       if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
       if (read && url.pathname === "/sitemap.xml") return text(sitemap(baseURL(env, request)), "application/xml");
-      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN), lifecycle_email: Boolean(env.KLAVIYO_PRIVATE_API_KEY) });
+      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN), lifecycle_email: Boolean(env.KLAVIYO_PRIVATE_API_KEY), pro_auth: Boolean(env.MAGIC_LINK_SECRET), pro_tokens: Boolean(env.TOKEN_HMAC_SECRET), stripe_webhook: Boolean(env.STRIPE_WEBHOOK_SECRET) });
       if (read && url.pathname === "/api/runs/latest") return latestRun(request, env);
       if (read && url.pathname === "/api/runs/timeline") return runTimeline(env);
       if (read && url.pathname === "/api/question-sets") return listQuestionSets(env, false);
@@ -181,27 +197,36 @@ async function listEvaluations(request: Request, env: Env): Promise<Response> {
 }
 
 async function ingestRun(request: Request, env: Env): Promise<Response> {
-  const auth = request.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return json({ ok: false, error: "missing bearer token" }, 401);
-  if (!env.BASELINE_API_TOKEN) return json({ ok: false, error: "BASELINE_API_TOKEN is not configured" }, 503);
-  if (auth.slice("Bearer ".length) !== env.BASELINE_API_TOKEN) return json({ ok: false, error: "invalid bearer token" }, 403);
   const payload = await request.json<RunPayload>();
   if (!payload.run_id) return json({ ok: false, error: "run_id required" }, 400);
   if (!env.DATABASE_URL) return json({ ok: false, error: "DATABASE_URL is not configured" }, 503);
   const sql = neon(env.DATABASE_URL);
   await ensureSchema(sql);
+  const ingestContext = await resolveRunIngestContext(request, env, sql);
+  if (ingestContext instanceof Response) return ingestContext;
+  const accountPrivatePayload = ingestContext.legacy ? null : JSON.stringify(payload);
   await sql`
-    insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload)
-    values (${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"}, ${payload.health_score || 0}, ${payload.mode || "unknown"}, ${JSON.stringify(payload)}::jsonb)
+    insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload, account_id, workspace_id, expires_at, account_private_payload, comparison_scope)
+    values (
+      ${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"},
+      ${payload.health_score || 0}, ${payload.mode || "unknown"}, ${JSON.stringify(payload)}::jsonb,
+      ${ingestContext.accountId}, ${ingestContext.workspaceId}, ${ingestContext.expiresAt}, ${accountPrivatePayload}::jsonb, ${ingestContext.comparisonScope}
+    )
     on conflict (id) do update set
       workspace = excluded.workspace,
       agent_kind = excluded.agent_kind,
       status = excluded.status,
       health_score = excluded.health_score,
       mode = excluded.mode,
-      payload = excluded.payload
+      payload = excluded.payload,
+      account_id = excluded.account_id,
+      workspace_id = excluded.workspace_id,
+      expires_at = excluded.expires_at,
+      account_private_payload = excluded.account_private_payload,
+      comparison_scope = excluded.comparison_scope
   `;
-  return json({ ok: true });
+  await recordRunAggregates(sql, payload, ingestContext);
+  return json({ ok: true, account_scoped: !ingestContext.legacy });
 }
 
 function configuredSQL(env: Env): NeonQueryFunction<false, false> | null {
@@ -457,8 +482,10 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   const input = request.method === "POST" ? await safeCheckoutInput(request) : {};
   const plan = (input.plan || url.searchParams.get("plan")) === "team" ? "team" : "pro";
   const email = normalizeOptionalEmail(input.email);
+  const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   const paymentLink = plan === "team" ? env.STRIPE_PAYMENT_LINK_TEAM : env.STRIPE_PAYMENT_LINK_PRO;
-  if (paymentLink) {
+  const canCreateCheckoutSession = Boolean(env.STRIPE_SECRET_KEY && price);
+  if (paymentLink && !canCreateCheckoutSession) {
     if (request.method === "POST") {
       ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, true));
       return json({ ok: true, url: paymentLink });
@@ -468,7 +495,6 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   if (!env.STRIPE_SECRET_KEY) {
     return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links." }, 503);
   }
-  const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   if (!price) return json({ ok: false, error: "Stripe price id is not configured for " + plan }, 503);
   const origin = baseURL(env, request);
   const body = new URLSearchParams({
@@ -483,7 +509,13 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
     "subscription_data[metadata][plan]": plan,
     "subscription_data[metadata][product_name]": "Baseline Pro Monitoring"
   });
-  if (email) body.set("customer_email", email);
+  let checkoutAccount = null;
+  if (email) {
+    if (!env.DATABASE_URL) return json({ ok: false, error: "DATABASE_URL is required for account checkout" }, 503);
+    checkoutAccount = await prepareCheckoutAccount(neon(env.DATABASE_URL), env, email, plan);
+  }
+  appendCheckoutMetadata(body, checkoutAccount, plan);
+  if (email && !checkoutAccount) body.set("customer_email", email);
   const resp = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: {
@@ -644,136 +676,284 @@ async function ensureSchema(sql: NeonQueryFunction<false, false>): Promise<void>
     created_at timestamptz not null default now()
   )`;
   await sql`create index if not exists llm_evaluations_run_idx on llm_evaluations (run_id, created_at desc)`;
+  await ensureCloudSchema(sql);
 }
 
 function landingPage(env: Env): string {
   return layout(env, "Baseline.ai | Keep coding agents inside the lines", `
-    <main>
-      <section class="hero courtHero">
-        <img class="heroArt" src="/assets/baseline-court-robot.png" alt="A white tennis robot standing on a sunlit court">
-        <div class="heroText reveal">
-          <p class="eyebrow">Agent monitoring at the service line</p>
-          <h1>Baseline.ai</h1>
-          <p class="lede">Keep coding agents inside the lines: memory, tools, MCP state, repo awareness, latency, and style checked before the work gets expensive.</p>
-          <div class="actions">
-            <a class="button primary" href="/docs/mcp">Run the local check</a>
-            <a class="button secondary" href="#pro-monitoring">Watch a workstation</a>
+    <main class="fieldLanding">
+      <section class="fieldHero" id="the-check">
+        <div class="film heroStill filmGrain">
+          <img src="/assets/baseline-court-serve.png" alt="A tennis robot standing on a sunlit court">
+        </div>
+        <div class="heroCopy">
+          <div>
+            <p class="eyebrow">Installs in seconds</p>
+            <h1>Your agent forgot. Baseline did not.</h1>
+            <p class="bodyText heroLede">Probe your agent in seconds to track real-life drift over time. Keep Hermes and OpenClaw dialed, and know before issues reach the work.</p>
+            <div class="fieldActions">
+              <a class="btn btnPrimary" href="/docs/mcp">install the cli &rarr;</a>
+              <a class="btn btnGhost" href="/dashboard">watch a run</a>
+            </div>
           </div>
-          <p class="fine">Local-first CLI. Redacted cloud history. Pro monitoring without raw prompt export.</p>
-        </div>
-        <div class="proofStrip" aria-label="Baseline checks">
-          <span>Memory stays in bounds</span>
-          <span>MCP drift gets called</span>
-          <span>Latency has a scoreboard</span>
-        </div>
-      </section>
-
-      <section class="band tight">
-        <div class="metricStrip">
-          <div><strong>14</strong><span>Core probes for identity, tools, repo, speed, style, safety, and variance.</span></div>
-          <div><strong>0 raw</strong><span>Default cloud sync exports hashes, scores, timing, and redacted summaries.</span></div>
-          <div><strong>7 tools</strong><span>A small MCP surface: setup, run, doctor, report, accept, schedule, scrub.</span></div>
+          <div class="terminalSample">
+            <p class="eyebrow">Installs in seconds</p>
+            <pre class="codeBlock"><code><span class="cmt">$</span> brew install trackbaseline/tap/baseline
+<span class="cmt">$</span> baseline run
+<span class="key">-&gt;</span> run_8f2c . score 92 . 11 ok / 3 watch / 0 fail
+<span class="cmt">#</span> watch: <span class="key">mcp.openclaw.config</span> drifted from baseline_clean-local
+<span class="cmt">#</span> watch: <span class="key">latency.tool_probe</span> +312ms over 5-day median</code></pre>
+          </div>
         </div>
       </section>
 
-      <section class="band two courtRules">
+      <section class="scoreboardSection" aria-labelledby="scoreboard-heading">
+        <div class="sectionTitleRow">
+          <div>
+            <p class="eyebrow">Today . across your workstations</p>
+            <h2 id="scoreboard-heading">Three agents. One scoreboard.</h2>
+          </div>
+          <a class="underLink" href="/dashboard">open dashboard &rarr;</a>
+        </div>
+        ${agentScoreboard()}
+      </section>
+
+      <section class="statRibbon" aria-label="Baseline metrics">
+        <div><strong>14</strong><span>Probes in the default set</span></div>
+        <div><strong>~8s</strong><span>P50 local run</span></div>
+        <div><strong>0 raw</strong><span>Cloud export: prompts / outputs / paths</span></div>
+        <div><strong>7 mcp</strong><span>Setup, run, doctor, report, accept, schedule, scrub</span></div>
+      </section>
+
+      <section class="dailySection">
         <div>
-          <p class="eyebrow">The product rule</p>
-          <h2>Stop guessing whether the agent changed.</h2>
-          <p>Baseline is not a generic trace dashboard. It is a daily known-good check for the local coding agents that already have your repo, tools, memory, and deadlines in their hands.</p>
-          <ul class="checks">
-            <li>Accept a clean Good Baseline only after reviewing local report artifacts.</li>
-            <li>Run fast daily checks before client work, deploys, or long autonomous sessions.</li>
-            <li>Sync redacted evidence to Pro when a workstation needs history and alerts.</li>
+          <p class="eyebrow">Run Baseline daily</p>
+          <h2>Compare agent responses against a known good baseline.</h2>
+          <p class="bodyText">Learn about latency, drift, and memory issues in real time, before they impact your work.</p>
+          <hr>
+          <ul class="dashList">
+            <li>Enable daily deep or fast checks.</li>
+            <li>Compare responses against good baselines, by agent.</li>
+            <li>Review changes over time to see model and harness impact.</li>
           </ul>
         </div>
-        <div class="imageStack" aria-label="Baseline visual identity">
-          <img src="/assets/baseline-court-humanoid.png" alt="A humanoid tennis robot holding a racket near the baseline">
-          <img src="/assets/baseline-court-walkaway.png" alt="A robot walking away across a tennis baseline">
+        <div class="film filmGrain portraitStill">
+          <img src="/assets/baseline-court-walkaway.png" alt="A tennis robot walking away across a court baseline">
         </div>
       </section>
 
-      <section class="band docsBand" id="docs">
-        <div class="sectionHead">
-          <p class="eyebrow">Documentation elements</p>
-          <h2>One command path, visible evidence.</h2>
-          <p>Use the local loop first. Pro exists for history, alerts, and team-visible monitoring after the workstation is already producing redacted run evidence.</p>
+      <section class="probesSection" id="probes">
+        <div class="sectionTitleRow">
+          <div>
+            <p class="eyebrow">The default set</p>
+            <h2>Fourteen probes.</h2>
+          </div>
+          <a class="underLink" href="/docs/mcp">read the rubric &rarr;</a>
         </div>
-        <div class="steps">
-          <div><span>01</span><strong>Install</strong><code>go install github.com/apollostreetcompany/baseline/cmd/baseline@latest</code></div>
-          <div><span>02</span><strong>Establish</strong><code>baseline setup && baseline report</code></div>
-          <div><span>03</span><strong>Compare</strong><code>baseline accept RUN_ID --confirm "accept RUN_ID"</code></div>
-        </div>
-        <div class="docGrid">
-          <article>
-            <h3>Monitor contract</h3>
-            <table>
-              <tr><th>Surface</th><th>Purpose</th></tr>
-              <tr><td><code>/api/runs</code></td><td>Token-gated redacted run ingest.</td></tr>
-              <tr><td><code>/dashboard</code></td><td>Latest run, warnings, timeline, and score.</td></tr>
-              <tr><td><code>/docs/mcp</code></td><td>MCP install and operator workflow.</td></tr>
-            </table>
-          </article>
-          <article class="callout">
-            <h3>Privacy default</h3>
-            <p>Baseline can compare cloud history without exporting raw prompts, raw responses, local paths, or secrets. The pro account should monitor the lane markers, not read the whole match transcript.</p>
-          </article>
-        </div>
+        ${probeRows()}
       </section>
 
-      <section class="band imageBand" aria-label="Baseline image system">
-        <img src="/assets/baseline-court-line.png" alt="A tennis robot walking along a bright court line">
-        <img src="/assets/baseline-court-serve.png" alt="A tennis robot viewed from a low court angle">
-        <img src="/assets/baseline-court-side.png" alt="A tennis robot in profile holding a racket">
-      </section>
-
-      <section class="band pricing" id="pro-monitoring">
+      <section class="commandSection">
         <div>
-          <p class="eyebrow">Pro monitoring</p>
-          <h2>Start local. Upgrade when drift becomes operational risk.</h2>
-          <p>Use the same payment shape as the Bibe Code flow: email capture, Stripe checkout, lifecycle events, and a backend entitlement ledger. The first Pro bead keeps raw outputs out of the cloud path.</p>
+          <p class="eyebrow">Four commands</p>
+          <h2>Install. Establish. Compare. Accept.</h2>
+          <p class="bodyText">The local loop. Seven MCP tools on top for agents that want to call Baseline themselves. No web app required to get value; the cloud surface is for history, alerts, and team-visible evidence after the workstation is already producing redacted runs.</p>
         </div>
-        <div class="priceGrid">
-          <article>
-            <h3>Local</h3>
-            <p class="price">$0</p>
-            <p>SQLite, MCP, scrub preview, report artifacts, Good Baseline compare.</p>
-            <a class="button secondary" href="/docs/mcp">Install</a>
-          </article>
-          <article>
-            <h3>Pro</h3>
-            <p class="price">$39/mo</p>
-            <p>Redacted run history, checkout-linked account, lifecycle email, private probes.</p>
-            <form class="checkoutForm" data-checkout-form>
-              <label class="srOnly" for="checkout-email">Email for Pro checkout</label>
-              <input id="checkout-email" name="email" type="email" autocomplete="email" placeholder="Email address" required>
-              <button class="button primary" type="submit">Buy Pro</button>
-              <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
-            </form>
-          </article>
-          <article>
-            <h3>Team</h3>
-            <p class="price">$129/mo</p>
-            <p>Shared dashboards, token/workspace model, alert routing, audit exports.</p>
-            <a class="button primary" href="/api/checkout?plan=team">Buy Team</a>
-          </article>
+        ${stepBlocks()}
+      </section>
+
+      <section class="imageTriptych" aria-label="Baseline field imagery">
+        <figure>
+          <div class="film filmGrain"><img src="/assets/baseline-court-side.png" alt="A tennis robot in profile holding a racket"></div>
+          <figcaption><span>01 / Walk-off</span><strong>After a clean session.</strong></figcaption>
+        </figure>
+        <figure>
+          <div class="film filmGrain"><img src="/assets/baseline-court-humanoid.png" alt="A humanoid tennis robot holding a racket"></div>
+          <figcaption><span>02 / Warm-up</span><strong>Before the day starts.</strong></figcaption>
+        </figure>
+        <figure>
+          <div class="film filmGrain"><img src="/assets/baseline-court-line.png" alt="A tennis robot walking along a bright court line"></div>
+          <figcaption><span>03 / Waiting</span><strong>For the next instruction.</strong></figcaption>
+        </figure>
+      </section>
+
+      <section class="pricingSection" id="pricing">
+        <div class="pricingIntro">
+          <div>
+            <p class="eyebrow">Pricing</p>
+            <h2>Start local. Pay when drift becomes operational risk.</h2>
+          </div>
+          <p class="bodyText">The CLI and MCP are free. Pro adds redacted run history, lifecycle email, and private probes. Team adds shared workstations and routed alerts.</p>
+        </div>
+        <div class="priceTable">
+          ${priceColumn("Local", "$0", "", "The whole product", ["SQLite store. MCP. Scrub preview.", "Local report artifacts.", "Good Baseline / compare."], "install", "/docs/mcp", false)}
+          ${priceColumn("Pro", "$39", "/mo / workstation", "When history matters", ["Redacted run history.", "Checkout-linked account.", "Lifecycle email + private probes."], "buy pro", "/api/checkout?plan=pro", true)}
+          ${priceColumn("Team", "$129", "/mo / team", "When alerts need to route", ["Shared dashboards.", "Token / workspace model.", "Audit exports."], "buy team", "/api/checkout?plan=team", false)}
         </div>
       </section>
 
-      <section class="band blogPreview">
-        <div class="sectionHead">
-          <p class="eyebrow">Field notes</p>
-          <h2>The Baseline blog starts as operator notes.</h2>
+      <section class="fieldNotes">
+        <div class="sectionTitleRow">
+          <div>
+            <p class="eyebrow">Field notes</p>
+            <h2>From the workstation.</h2>
+          </div>
+          <a class="underLink" href="/blog">all notes &rarr;</a>
         </div>
-        <div class="blogGrid">
-          <a href="/blog"><strong>How to accept a Good Baseline</strong><span>The review ritual before a run becomes trusted.</span></a>
-          <a href="/blog"><strong>What Pro should monitor first</strong><span>Entitlements, alert routing, and redacted run history.</span></a>
-          <a href="/blog"><strong>Why agent drift feels like a missed line call</strong><span>Memory, tool visibility, and latency as practical signals.</span></a>
+        <div class="noteGrid">
+          ${noteCard("2026 . 05 . 14", "How to accept a Good Baseline.", "The five-minute review ritual before a run becomes the standard your workstation compares against.")}
+          ${noteCard("2026 . 04 . 28", "MCP drift looks like nothing, until it costs a day.", "Three real incidents from operator pilots. None of them showed up in trace dashboards.")}
+          ${noteCard("2026 . 04 . 09", "The case against a leaderboard.", "Why Baseline does not score models against each other, and what it scores instead.")}
+        </div>
+      </section>
+
+      <section class="closerSection">
+        <h2>In the line, or out.</h2>
+        <div>
+          <p class="bodyText">Install the CLI. Run the check once. Accept the run that earns it. That is the first hour with Baseline.</p>
+          <div class="fieldActions">
+            <a class="btn paperBtn" href="/docs/mcp">install &rarr;</a>
+            <a class="btn outlinePaperBtn" href="/docs/mcp">read the docs</a>
+          </div>
         </div>
       </section>
     </main>
     ${proAccountScript()}
   `, softwareJsonLD(env));
+}
+
+function agentScoreboard(): string {
+  const agents = [
+    {
+      name: "OpenClaw",
+      workspace: "apollo-street/api",
+      score: 92,
+      delta: "+1",
+      status: "watch",
+      trend: [62, 71, 88, 84, 79, 81, 91, 95, 88, 92, 90, 92, 92],
+      findings: [
+        ["ok", "identity", "model / context / goal matched"],
+        ["watch", "mcp.config", "drift from clean-local"],
+        ["watch", "latency.tool", "+312ms over 5-day median"],
+      ],
+    },
+    {
+      name: "Hermes",
+      workspace: "apollo-street/web",
+      score: 97,
+      delta: "+2",
+      status: "ok",
+      trend: [70, 78, 84, 88, 91, 90, 93, 92, 94, 95, 96, 96, 97],
+      findings: [
+        ["ok", "identity", "stable for 14 runs"],
+        ["ok", "memory", "context survives across calls"],
+        ["ok", "safety.scrubber", "no leaks detected"],
+      ],
+    },
+    {
+      name: "Claude Code",
+      workspace: "apollo-street/infra",
+      score: 78,
+      delta: "-9",
+      status: "fail",
+      trend: [88, 90, 91, 88, 87, 85, 84, 82, 80, 79, 78, 77, 78],
+      findings: [
+        ["fail", "memory", "context lost mid-session"],
+        ["watch", "variance", "2 of 5 prompts diverged"],
+        ["watch", "repo.workspace", "dirty: 11 unstaged files"],
+      ],
+    },
+  ];
+  return `<div class="agentGrid">${agents.map((agent) => `
+    <article class="agentCard">
+      <header><strong>${agent.name}</strong><code>${agent.workspace}</code></header>
+      <div class="agentBody">
+        <div>
+          <p class="agentScore">${agent.score}<span>/100</span></p>
+          <p class="agentStatus ${agent.status}">${agent.status} . ${agent.delta}</p>
+        </div>
+        <div>
+          <p class="miniLabel">Last 13 runs</p>
+          <div class="trendBars">${agent.trend.map((height) => `<span style="height:${height}%"></span>`).join("")}</div>
+        </div>
+      </div>
+      <div class="findingList">${agent.findings.map(([status, id, message]) => `
+        <div>
+          <span class="${status}">${status}</span>
+          <p><code>${id}</code><small>${message}</small></p>
+        </div>
+      `).join("")}</div>
+    </article>
+  `).join("")}</div>`;
+}
+
+function probeRows(): string {
+  const probes = [
+    ["identity", "Identity", "Model, provider, context window, primary goal."],
+    ["repo", "Awareness", "Workspace path, clean/dirty state, branch."],
+    ["tooling", "Tools", "MCP server reachable, allowed tool surface declared."],
+    ["memory", "Memory", "Carried context survives between calls. Same answer twice."],
+    ["latency", "Speed", "P50 and P95 against the 5-day local median."],
+    ["variance", "Stability", "Five identical prompts. Five identical answers."],
+    ["safety", "Safety", "Scrubber catches paths, secrets, prompt fragments."],
+    ["style", "Style", "Repository conventions: tabs, naming, file layout."],
+    ["change", "Awareness", "Reports any tool / MCP / repo / config change since Good."],
+    ["reasoning", "Basic", "Two-plus-two. Date. The smoke test for a broken model."],
+    ["instruction", "Obedience", "Answer only the word. Answer only the number."],
+    ["redaction", "Safety", "Redacted summaries verify against original on push."],
+    ["tool-call", "Tools", "Tool calls actually fire. Names match the declared surface."],
+    ["session", "Stability", "A second session in the same workspace agrees with the first."],
+  ];
+  return `<div class="probeTable">${probes.map(([id, group, desc], index) => `
+    <div class="probeRow">
+      <span>${String(index + 1).padStart(2, "0")}</span>
+      <span>${group}</span>
+      <strong>${id}.</strong>
+      <p>${desc}</p>
+      <em>v0.1</em>
+    </div>
+  `).join("")}</div>`;
+}
+
+function stepBlocks(): string {
+  const steps = [
+    ["baseline setup", "Detect the local agent, write SQLite, run preflight."],
+    ["baseline run --mode fast", "Fourteen probes against the active workstation. About eight seconds."],
+    ["baseline accept run_8f2c --label clean-local", "Review the report. Mark this run as your Good Baseline."],
+    ["baseline compare", "Every later run is judged against the accepted one."],
+  ];
+  return `<div class="stepStack">${steps.map(([cmd, desc], index) => `
+    <div>
+      <p><span>${String(index + 1).padStart(2, "0")}</span><code>$ ${cmd}</code></p>
+      <small>${desc}</small>
+    </div>
+  `).join("")}</div>`;
+}
+
+function priceColumn(name: string, price: string, sub: string, tag: string, features: string[], cta: string, href: string, form: boolean): string {
+  return `<article class="priceCol ${form ? "highlight" : ""}">
+    <p class="eyebrow">${tag}</p>
+    <h3>${name}</h3>
+    <p class="price">${price}${sub ? `<span>${sub}</span>` : ""}</p>
+    <ul>${features.map((feature) => `<li>${feature}</li>`).join("")}</ul>
+    ${form ? `
+      <form class="checkoutForm" data-checkout-form>
+        <label class="srOnly" for="checkout-email">Email for Pro checkout</label>
+        <input id="checkout-email" name="email" type="email" autocomplete="email" placeholder="email" required>
+        <button class="btn btnPrimary" type="submit">${cta} &rarr;</button>
+        <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
+      </form>
+    ` : `<a class="btn btnGhost" href="${href}">${cta} &rarr;</a>`}
+  </article>`;
+}
+
+function noteCard(date: string, title: string, body: string): string {
+  return `<a href="/blog" class="noteCard">
+    <span>${date}</span>
+    <strong>${title}</strong>
+    <p>${body}</p>
+    <em>Read &rarr;</em>
+  </a>`;
 }
 
 function blogPage(env: Env): string {
@@ -885,6 +1065,12 @@ openclaw mcp list
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
 baseline doctor
 baseline sync push</code></pre>
+      <h2>Remote MCP</h2>
+      <p>Pro accounts can also connect to the cloud MCP at <code>${escapeHTML(baseURL(env))}/mcp</code>. The remote MCP never runs local probes; it reads account history, hotspots, self-history comparisons, workspace tokens, and Stripe portal handoffs after magic-link session auth.</p>
+      <pre><code>POST ${escapeHTML(baseURL(env))}/api/auth/magic-link
+POST ${escapeHTML(baseURL(env))}/api/auth/consume
+Authorization: Bearer YOUR_SESSION_TOKEN
+POST ${escapeHTML(baseURL(env))}/mcp</code></pre>
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
       <h2>Recommended first Good Baseline</h2>
@@ -1079,9 +1265,13 @@ function layout(env: Env, title: string, body: string, structuredData = ""): str
   ${structuredData}
 </head>
 <body>
-  <header class="nav"><a href="/" class="brand">Baseline.ai</a><nav><a href="/dashboard">Dashboard</a><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/api/checkout?plan=pro">Pro</a></nav></header>
+  <header class="nav">
+    <a href="/" class="brandLockup"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a>
+    <nav class="navLinks"><a href="/#the-check">the check</a><a href="/docs/mcp">docs</a><a href="/#pricing">pricing</a><a href="/blog">field notes</a></nav>
+    <div class="navCtas"><a href="/dashboard">sign in</a><a class="btn btnPrimary" href="/docs/mcp">install</a></div>
+  </header>
   ${body}
-  <footer><span>Baseline.ai</span><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></footer>
+  <footer><a href="/" class="brandLockup small"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>2026 TRACKBASELINE.COM</span></footer>
   <script>
     document.querySelectorAll('a[href^="/api/checkout"], a[href="/docs/mcp"]').forEach(function(a){
       a.addEventListener('click', function(){ navigator.sendBeacon && navigator.sendBeacon('/api/events', JSON.stringify({type:'cta_click', path: location.pathname, href: a.getAttribute('href')})); });
@@ -1203,6 +1393,138 @@ function css(): string {
     .admin textarea { min-height:430px; font-family:var(--mono); font-size:13px; line-height:1.45; resize:vertical; }
     .adminActions { margin:14px 0 26px; }
     footer { display:flex; flex-wrap:wrap; gap:20px; padding:30px max(20px, calc((100vw - 1180px) / 2)); color:var(--muted); border-top:3px solid var(--line); background:var(--paper); }
+    :root { --bone:#ece2cf; --paper:#f5ede0; --paper-2:#faf4ea; --court:#b87560; --court-d:#8a4f3e; --sky:#8aa3ad; --sky-d:#5a747f; --fence:#2c3a42; --ink:#14110d; --ash:#6c6357; --line:#1a1612; --hairline:rgba(20,17,13,.14); --hairline-2:rgba(20,17,13,.08); --lime:#d9f45d; --green:#3d6b4a; --amber:#a15c00; --red:#b42318; --display:"Archivo","Archivo Narrow","Avenir Next Condensed","DIN Condensed",Impact,sans-serif; --body:"Archivo","Avenir Next",system-ui,sans-serif; --mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace; }
+    body { background:var(--bone); font-family:var(--body); color:var(--ink); }
+    .nav { min-height:74px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:28px; padding:18px clamp(20px, 4vw, 56px); border-bottom:1px solid var(--ink); background:var(--bone); position:sticky; top:0; z-index:40; }
+    .brandLockup { display:inline-flex; align-items:center; gap:14px; text-decoration:none; color:var(--ink); }
+    .brandLockup span { width:32px; height:32px; border:1px solid var(--ink); display:block; overflow:hidden; background:var(--fence); }
+    .brandLockup.small span { width:26px; height:26px; }
+    .brandLockup img { width:100%; height:100%; object-fit:cover; object-position:50% 24%; display:block; }
+    .brandLockup strong { font-family:var(--display); font-weight:700; font-stretch:125%; font-size:30px; line-height:1; letter-spacing:0; text-transform:none; }
+    .brandLockup.small strong { font-size:25px; }
+    .navLinks { display:flex; justify-content:center; gap:28px; font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; font-weight:500; color:var(--fence); }
+    .navLinks a, .navCtas a, footer a { text-decoration:none; color:inherit; border-bottom:1px solid transparent; }
+    .navLinks a:hover, .navCtas a:hover, footer a:hover { border-color:currentColor; }
+    .navCtas { display:flex; align-items:center; justify-content:flex-end; gap:12px; font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--fence); }
+    footer { display:grid; grid-template-columns:1fr auto auto auto auto auto; align-items:center; gap:28px; padding:34px clamp(20px, 4vw, 56px); border-top:1px solid var(--ink); background:var(--bone); font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ash); }
+    .fieldLanding { background:var(--bone); color:var(--ink); overflow:hidden; }
+    .fieldLanding h1, .fieldLanding h2, .fieldLanding h3 { font-family:var(--display); font-weight:700; font-stretch:125%; letter-spacing:0; text-transform:none; text-wrap:balance; color:var(--ink); }
+    .fieldLanding h1 { font-size:clamp(4rem, 7.4vw, 88px); line-height:.92; margin:18px 0 24px; max-width:660px; }
+    .fieldLanding h2 { font-size:clamp(3rem, 5.3vw, 64px); line-height:.92; margin:18px 0 24px; }
+    .fieldLanding h3 { font-size:clamp(2rem, 3vw, 40px); line-height:1; margin:12px 0 4px; }
+    .eyebrow { font-family:var(--mono); font-size:11px; line-height:1.25; letter-spacing:.18em; text-transform:uppercase; color:var(--ash); margin:0; }
+    .bodyText { font-family:var(--body); color:var(--fence); font-size:16px; line-height:1.5; margin:0; max-width:560px; }
+    .fieldHero { display:grid; grid-template-columns:minmax(0, 1.05fr) minmax(0, 1fr); min-height:680px; border-bottom:1px solid var(--ink); }
+    .film { position:relative; overflow:hidden; background:var(--fence); }
+    .film img { display:block; width:100%; height:100%; object-fit:cover; filter:contrast(.96) saturate(.92); }
+    .film::after { content:""; position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 80px rgba(20,17,13,.18); }
+    .filmGrain::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.06; mix-blend-mode:overlay; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); z-index:1; }
+    .heroStill { min-height:680px; border-right:1px solid var(--ink); }
+    .heroCopy { padding:60px clamp(24px, 4vw, 56px) 48px; display:flex; flex-direction:column; justify-content:space-between; gap:36px; }
+    .heroLede { font-size:19px; line-height:1.45; }
+    .fieldActions { display:flex; flex-wrap:wrap; gap:12px; margin-top:32px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:12px 18px; border:1px solid var(--ink); border-radius:0; font-family:var(--body); font-size:14px; font-weight:600; letter-spacing:.01em; text-decoration:none; cursor:pointer; transition:background 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease; }
+    .btn:hover { transform:translateY(-1px); }
+    .btnPrimary, .btnPrimary:visited, .navCtas .btnPrimary { background:var(--ink); color:var(--bone); border-color:var(--ink); }
+    .btnPrimary:hover { background:var(--court-d); border-color:var(--court-d); color:var(--bone); }
+    .btnGhost { background:transparent; color:var(--ink); }
+    .btnGhost:hover { background:var(--ink); color:var(--bone); }
+    .paperBtn { background:var(--paper); color:var(--ink); border-color:var(--paper); }
+    .outlinePaperBtn { background:transparent; color:var(--paper); border-color:var(--paper); }
+    .terminalSample { margin-top:auto; }
+    .terminalSample .eyebrow { margin-bottom:10px; }
+    .codeBlock { background:var(--ink); color:var(--paper); font-family:var(--mono); font-size:13px; padding:16px 18px; line-height:1.55; border:1px solid var(--ink); border-radius:0; overflow:auto; white-space:pre-wrap; }
+    .codeBlock .cmt { color:var(--sky); }
+    .codeBlock .key { color:#c89a8a; }
+    .scoreboardSection, .dailySection, .probesSection, .pricingSection, .fieldNotes { padding:clamp(58px, 7vw, 88px) clamp(20px, 4vw, 56px); border-bottom:1px solid var(--ink); }
+    .sectionTitleRow { display:flex; justify-content:space-between; align-items:flex-end; gap:28px; margin-bottom:32px; }
+    .underLink { font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; text-decoration:underline; text-underline-offset:3px; color:var(--ink); white-space:nowrap; }
+    .agentGrid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); border:1px solid var(--ink); }
+    .agentCard { background:var(--paper); min-width:0; border-right:1px solid var(--ink); }
+    .agentCard:last-child { border-right:0; }
+    .agentCard header { background:var(--ink); color:var(--bone); display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 16px; }
+    .agentCard header strong { font-family:var(--display); font-size:17px; font-weight:700; font-stretch:115%; letter-spacing:0; }
+    .agentCard header code { color:rgba(236,226,207,.68); font-family:var(--mono); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .agentBody { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:20px; padding:22px; }
+    .agentScore { display:flex; align-items:baseline; gap:4px; margin:0; font-family:var(--display); font-weight:700; font-stretch:125%; font-size:80px; line-height:1; color:var(--ink); }
+    .agentScore span { font-family:var(--mono); font-size:11px; color:var(--ash); }
+    .agentStatus { margin:8px 0 0; font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--court); }
+    .agentStatus.ok { color:var(--green); }
+    .agentStatus.fail { color:var(--court-d); }
+    .miniLabel { margin:0; font-family:var(--mono); font-size:10px; color:var(--ash); letter-spacing:.14em; text-transform:uppercase; }
+    .trendBars { height:52px; display:flex; align-items:flex-end; gap:2px; margin-top:8px; }
+    .trendBars span { flex:1; min-width:3px; background:var(--ink); }
+    .trendBars span:nth-child(4n+1), .trendBars span:nth-child(4n+2) { background:var(--court); }
+    .trendBars span:nth-child(5n) { background:var(--sky-d); }
+    .findingList { border-top:1px solid var(--hairline); padding:14px 22px 22px; display:grid; gap:8px; }
+    .findingList div { display:grid; grid-template-columns:52px 1fr; gap:12px; align-items:baseline; }
+    .findingList span { font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--court); }
+    .findingList span.ok { color:var(--green); }
+    .findingList span.fail { color:var(--court-d); }
+    .findingList p { margin:0; }
+    .findingList code { font-family:var(--mono); font-size:12px; color:var(--ink); }
+    .findingList small { display:block; margin-top:2px; font-size:12px; color:var(--ash); line-height:1.35; }
+    .statRibbon { display:grid; grid-template-columns:repeat(4, 1fr); background:var(--ink); color:var(--bone); border-bottom:1px solid var(--ink); }
+    .statRibbon div { padding:30px 28px; border-right:1px solid rgba(236,226,207,.16); }
+    .statRibbon div:last-child { border-right:0; }
+    .statRibbon strong { display:block; font-family:var(--display); font-weight:700; font-stretch:125%; font-size:56px; line-height:1; letter-spacing:0; color:var(--bone); }
+    .statRibbon span { display:block; margin-top:14px; font-family:var(--mono); font-size:10px; line-height:1.45; letter-spacing:.16em; text-transform:uppercase; color:rgba(236,226,207,.66); }
+    .dailySection { display:grid; grid-template-columns:minmax(0, 1fr) minmax(320px, 1.1fr); gap:56px; align-items:center; }
+    .dailySection hr { border:0; border-top:1px solid var(--hairline); margin:28px 0; }
+    .portraitStill { aspect-ratio:4 / 5; border:1px solid var(--ink); min-height:0; }
+    .dashList { list-style:none; margin:0; padding:0; display:grid; gap:14px; }
+    .dashList li { display:grid; grid-template-columns:auto 1fr; gap:14px; color:var(--fence); line-height:1.45; }
+    .dashList li::before { content:"-"; color:var(--court); font-family:var(--mono); letter-spacing:.14em; }
+    .probeTable { border-top:1px solid var(--ink); }
+    .probeRow { display:grid; grid-template-columns:60px 1.2fr 1.6fr 4fr 80px; gap:16px; align-items:baseline; padding:20px 0; border-bottom:1px solid var(--hairline); }
+    .probeRow span:first-child, .probeRow em { color:var(--ash); font-family:var(--mono); font-size:12px; font-style:normal; }
+    .probeRow span:nth-child(2) { color:var(--court); font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; }
+    .probeRow strong { font-family:var(--display); font-weight:600; font-stretch:115%; font-size:22px; color:var(--ink); }
+    .probeRow p { margin:0; color:var(--fence); font-size:14px; line-height:1.45; }
+    .probeRow em { text-align:right; font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+    .commandSection { display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:start; background:var(--ink); color:var(--bone); padding:clamp(58px, 7vw, 88px) clamp(20px, 4vw, 56px); border-bottom:1px solid var(--ink); }
+    .commandSection h2 { color:var(--bone); }
+    .commandSection .eyebrow { color:#c89a8a; }
+    .commandSection .bodyText { color:rgba(236,226,207,.72); }
+    .stepStack > div { border-top:1px solid rgba(236,226,207,.18); padding:22px 0; }
+    .stepStack p { display:flex; align-items:baseline; gap:16px; margin:0; color:var(--bone); }
+    .stepStack span { color:rgba(236,226,207,.55); font-family:var(--mono); font-size:11px; letter-spacing:.14em; }
+    .stepStack code { color:var(--bone); font-family:var(--mono); font-size:16px; }
+    .stepStack small { display:block; margin:8px 0 0 32px; color:rgba(236,226,207,.68); line-height:1.45; }
+    .imageTriptych { display:grid; grid-template-columns:repeat(3, 1fr); border-bottom:1px solid var(--ink); }
+    .imageTriptych figure { margin:0; position:relative; border-right:1px solid var(--ink); min-width:0; }
+    .imageTriptych figure:last-child { border-right:0; }
+    .imageTriptych .film { aspect-ratio:1 / 1; }
+    .imageTriptych figcaption { position:absolute; left:16px; bottom:16px; color:var(--bone); text-shadow:0 1px 16px rgba(0,0,0,.45); }
+    .imageTriptych figcaption span { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; }
+    .imageTriptych figcaption strong { display:block; margin-top:4px; font-family:var(--display); font-weight:600; font-size:18px; color:var(--bone); }
+    .pricingIntro { display:grid; grid-template-columns:1fr 1.2fr; gap:56px; align-items:end; margin-bottom:36px; }
+    .pricingIntro .bodyText { justify-self:end; max-width:460px; color:var(--ash); }
+    .priceTable { display:grid; grid-template-columns:repeat(3, 1fr); border:1px solid var(--ink); }
+    .priceCol { padding:32px 28px; border-right:1px solid var(--ink); min-width:0; display:flex; flex-direction:column; background:transparent; }
+    .priceCol:last-child { border-right:0; }
+    .priceCol.highlight { background:var(--paper); }
+    .priceCol .price { margin:10px 0 20px; font-family:var(--display); font-weight:700; font-stretch:125%; font-size:56px; line-height:1; color:var(--ink); }
+    .priceCol .price span { margin-left:6px; font-family:var(--mono); font-size:11px; color:var(--ash); }
+    .priceCol ul { list-style:none; margin:0 0 24px; padding:0; display:grid; gap:10px; }
+    .priceCol li { display:grid; grid-template-columns:auto 1fr; gap:10px; color:var(--fence); font-size:14px; line-height:1.45; }
+    .priceCol li::before { content:"-"; color:var(--court); font-family:var(--mono); }
+    .priceCol > .btn, .priceCol form { margin-top:auto; }
+    .priceCol .btn { width:100%; }
+    .checkoutForm { display:grid; gap:8px; }
+    .checkoutForm input { min-height:46px; border:1px solid var(--ink); border-radius:0; background:transparent; color:var(--ink); padding:12px 14px; font-family:var(--mono); font-size:13px; width:100%; }
+    .checkoutForm button { width:100%; }
+    .checkoutStatus { min-height:22px; margin:0; color:var(--ash); font-size:12px; line-height:1.35; }
+    .fieldNotes { background:var(--bone); }
+    .noteGrid { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; }
+    .noteCard { display:block; padding:22px 22px 24px; border:1px solid var(--ink); background:var(--paper); color:var(--ink); text-decoration:none; min-width:0; }
+    .noteCard span { font-family:var(--mono); font-size:11px; color:var(--ash); letter-spacing:.14em; text-transform:uppercase; }
+    .noteCard strong { display:block; margin:18px 0 12px; font-family:var(--display); font-weight:700; font-stretch:115%; font-size:24px; line-height:1.08; color:var(--ink); }
+    .noteCard p { margin:0; color:var(--fence); font-size:14px; line-height:1.45; }
+    .noteCard em { display:block; margin-top:18px; font-family:var(--mono); font-style:normal; font-size:11px; color:var(--court); letter-spacing:.14em; text-transform:uppercase; }
+    .closerSection { display:grid; grid-template-columns:1.4fr 1fr; gap:48px; align-items:center; background:var(--court); color:var(--paper); padding:clamp(58px, 7vw, 80px) clamp(20px, 4vw, 56px); border-bottom:1px solid var(--ink); }
+    .closerSection h2 { color:var(--paper); font-size:clamp(4rem, 7.4vw, 88px); margin:0; }
+    .closerSection .bodyText { color:var(--paper); }
     .reveal { animation:riseIn 520ms cubic-bezier(.16,1,.3,1) both; }
     @keyframes riseIn { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
     @media (max-width: 860px) {
@@ -1224,6 +1546,27 @@ function css(): string {
       .dashHead { padding:36px 18px 18px; display:block; }
       .dashHead h1 { font-size:2rem; }
       .dashboard > .productFrame, .productFrame { width:auto; margin:0 18px; min-height:0; }
+      .nav { grid-template-columns:1fr; align-items:start; gap:14px; padding:14px 18px; position:static; }
+      .navLinks { justify-content:flex-start; flex-wrap:wrap; gap:12px 18px; }
+      .navCtas { justify-content:flex-start; flex-wrap:wrap; }
+      footer { grid-template-columns:1fr; align-items:start; gap:14px; }
+      .fieldHero, .dailySection, .commandSection, .pricingIntro, .priceTable, .noteGrid, .closerSection { grid-template-columns:1fr; }
+      .fieldHero { min-height:0; }
+      .heroStill { min-height:420px; border-right:0; border-bottom:1px solid var(--ink); }
+      .heroCopy { padding:42px 20px; }
+      .fieldLanding h1 { font-size:clamp(3.3rem, 15vw, 4.8rem); }
+      .fieldLanding h2, .closerSection h2 { font-size:clamp(2.6rem, 12vw, 4rem); }
+      .sectionTitleRow { display:block; }
+      .underLink { display:inline-block; margin-top:12px; white-space:normal; }
+      .agentGrid, .statRibbon, .imageTriptych { grid-template-columns:1fr; }
+      .agentCard, .statRibbon div, .imageTriptych figure, .priceCol { border-right:0; border-bottom:1px solid var(--ink); }
+      .agentCard:last-child, .statRibbon div:last-child, .imageTriptych figure:last-child, .priceCol:last-child { border-bottom:0; }
+      .agentBody { grid-template-columns:1fr; }
+      .probeRow { grid-template-columns:44px 1fr; gap:8px 14px; }
+      .probeRow strong, .probeRow p { grid-column:2; }
+      .probeRow em { display:none; }
+      .portraitStill { aspect-ratio:1 / 1; }
+      .pricingIntro .bodyText { justify-self:start; }
     }
     @media (max-width: 520px) {
       body { font-size:16px; }
@@ -1232,6 +1575,9 @@ function css(): string {
       h3 { font-size:1.25rem; }
       .actions, .actions .button, .checkoutForm .button { width:100%; }
       .button { width:100%; }
+      .fieldActions, .fieldActions .btn, .priceCol .btn, .checkoutForm .btn { width:100%; }
+      .agentScore { font-size:64px; }
+      .statRibbon strong, .priceCol .price { font-size:44px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }

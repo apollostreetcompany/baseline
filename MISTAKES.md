@@ -9,3 +9,5 @@
 
 ## Session Lessons
 - 2026-05-19: RepoPrompt workspace binding may be absent even when the repo exists locally. Bind or create the RepoPrompt workspace before code mapping.
+- 2026-05-19: Wrangler uploaded an untracked `web/public/.DS_Store` asset during deploy. Add `.DS_Store` to `.gitignore`, remove stray macOS metadata before deploy, and confirm the Wrangler asset count.
+- 2026-05-19: A redesign branch created from an older commit can roll back live Worker routes if deployed directly. Before deploy, compare against the currently deployed surface and preserve newer cloud/auth/MCP files from the active worktree.

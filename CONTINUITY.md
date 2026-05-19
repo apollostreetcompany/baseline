@@ -11,6 +11,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Cloud sync must fail closed and export only redacted/hash summaries.
 - Payment checkout is implemented but cannot go live without Stripe secrets, price IDs, or payment links.
 - OpenProse Codex skill was repaired to upstream 0.13.1 on 2026-05-14; stale local copy backed up at `/Users/future/.codex/skills/open-prose.backup-20260513172352`.
+- Bead 27 work is isolated in `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os` on branch `codex/feat/bead-27-landing-a-brand-os` so the original dirty worktree can remain available to the other agent.
 
 ## Key Decisions
 - Broad "LLM observability" positioning is not viable as a solo wedge because incumbent trace/eval platforms already own it.
@@ -29,6 +30,11 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Attached recipe-style `.prose.md` files are legacy frontmatter workflows without `kind:`; they now have compatibility run receipts under `.prose/runs/`.
 - Bead 23 is split into two tracks: 23A refreshes brand/design/docs/blog landing surfaces around the supplied tennis-robot imagery; 23B defines and scaffolds the Pro monitoring account architecture using Bibe Code's Stripe/Klaviyo lifecycle pattern as reference without copying secrets or religious product semantics.
 - MagicPath theme input selected for Bead 23A is a blend: Brutalism supplies the hard-edged editorial stance, Ramp supplies the operational SaaS restraint, and the actual palette is derived around the court images: film teal, clay, tennis-line cream, signal lime, and graphite.
+- Bead 25 locks Baseline Pro as a cloud-backed product on Cloudflare Worker + Neon, not Supabase and not local-only MCP. REST remains canonical, the remote MCP is an authenticated adapter over account/history/hotspot/billing operations, and the local CLI remains the redacted probe runner/sync client.
+- Bead 25 commercial target is a paid pilot at `$39/mo`; billing access and destructive operations must use Stripe portal handoff or explicit confirmation, not silent MCP mutation.
+- Bead 25 comparison v1 exposes self-history only while storing account-private and benchmark-ready aggregate-safe fields for later team/anonymous modes behind consent and feature flags.
+- Bead 27 preserves the deployed Bead 25 cloud account and remote MCP surface while replacing the homepage with the `landing-a` design/assets from `/Users/kikimac/Downloads/baseline.zip`; the latest Cloudflare Worker deploy is version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
+- BrandOS on this machine must use `python3` and the bundled `.prose` validator fallback when `prose` or PyYAML are unavailable; the local `brand-os-studio` skill has been repaired accordingly.
 
 ## State
 ### Done
@@ -57,9 +63,13 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 23B: Documented Pro account architecture for Cloudflare-first Stripe/Klaviyo/Neon entitlement flow with Render fallback, rollout beads, validation, and rollback.
 - [x] Bead 23A: Refreshed Baseline landing brand identity around supplied tennis-robot images, added Worker static assets, documentation-style landing sections, Pro checkout email form stub, Klaviyo checkout-start event hook, checkout success/cancel pages, blog stub, updated deployment/readme/project scaffolding, and verified desktop/mobile local Worker rendering.
 - [x] Bead 24: Deployed the refreshed Baseline landing page to Cloudflare Workers version `5cc879a3-983d-4e59-a620-e8abd8d70a99` and verified live landing, blog, image asset, health, and checkout fallback behavior.
+- [x] Bead 25: Implemented and deployed cloud accounts, invite/magic-link sessions, Stripe webhook entitlement lifecycle, account-scoped HMAC workspace tokens, self-history/hotspot/compare APIs, remote MCP adapter, SwiftUI macOS hotspot dashboard, and skill-audited deployment notes. Latest Worker deploy version: `dfc2198f-9151-4a64-8511-4e25d3c2d529`.
+- [x] Bead 27: Rebuilt the homepage to match `landing-a`, preserved Bead 25 cloud routes/schema, repaired the local BrandOS skill runtime assumptions, and deployed Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 
 ### Now
-- Bead 25: Dogfood/admin token split, Stripe entitlement, or API token/workspace model is next, using `docs/plans/2026-05-19-001-pro-account-architecture.md` as the architecture source. `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `5cc879a3-983d-4e59-a620-e8abd8d70a99`.
+- No active implementation bead remains in the `baseline-landing-a-brand-os` worktree; Bead 27 is deployed and awaiting final commit/evidence.
+- Bead 26 remains the next production work: configure Pro secrets (`MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET`, Klaviyo), then run an end-to-end invited account checkout/token/sync test. Risk class: High because it activates live auth and billing.
+- `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 - Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
 - First real OpenClaw eval `run_dil295nlwpug` completed with status warning, health 92, 14 Baseline Core probes, and one slow `ops_change` warning at 95026ms. A later scheduled run `run_dil2s3gle45k` did fire but failed preflight from `/` with launchd's stripped PATH; `baseline latest` and `baseline status` now point back to the real eval instead of that preflight-only failure.
 - MCP `baseline_run`, `baseline_setup`, and `baseline_schedule action=run` now return quickly with a lifecycle `run_status.run_id`; agents should poll `baseline_report` for completion instead of holding the MCP call open for the whole eval. If the child process disappears before a DB row is written, `baseline_report`/`baseline report` marks the run failed, includes stdout/stderr paths, and suggests `baseline rerun RUN_ID`.
@@ -69,12 +79,13 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `baseline doctor` now surfaces the current OpenClaw memory-search redacted placeholder as a warning instead of passing silently: `openclaw.memory.redacted_key`. This is separate from Google/Gemini search config and should be repaired through OpenClaw's secret/config path, not by removing providers.
 
 ### Next
-- Bead 25: Dogfood/admin token split, Stripe entitlement, or API token/workspace model, depending on available credentials and the Bead 23B architecture note.
-- Later sequence: Stripe entitlement, token/workspace model, app-level retention, OpenClaw runner pack, MCP schema drift, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
+- Bead 26: Production secret setup and end-to-end Pro pilot smoke.
+- Later sequence: app-level retention enforcement, OpenClaw runner pack, MCP schema drift testing against target clients, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
 ## Open Questions
 - Which Stripe plan IDs or payment links should be used for Pro and Team?
-- UNCONFIRMED: whether Pro monitoring should launch first on the current Cloudflare Worker + Neon stack or split transactional billing/webhook handling into a Render service.
+- Production `STRIPE_PRICE_ID_PRO` is still unset, so paid pilot checkout cannot be activated yet.
+- Production `MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, and `STRIPE_WEBHOOK_SECRET` are still unset, so live account auth/token/webhook flows are deployed but inactive/fail closed.
 - What separate admin token should replace the temporary dogfood reuse of the sync token?
 - Which OpenAI evaluator key/model should be used for paid pilot evaluation?
 - Should the first alert destination be local OpenClaw notification, Slack, GitHub Checks, or email?
@@ -111,6 +122,9 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/web/public/assets`
 - `/Users/future/dev/baseline/docs/plans/2026-05-19-001-pro-account-architecture.md`
 - `/Users/future/dev/baseline/.prose/runs/20260514-002532-*`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`
+- `/Users/kikimac/Downloads/baseline.zip`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`
 
 
 <!-- BEGIN COMPOUND CODEX TOOL MAP -->
