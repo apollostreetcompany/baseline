@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-29-distribution-and-pro-activation`.
+- Working branch: `codex/feat/bead-30-datafast-funnel-analytics`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -11,12 +11,14 @@
   - Integration: PR #1 (`https://github.com/apollostreetcompany/baseline/pull/1`) combines Bead 25 cloud/Mac app functionality with Bead 27 landing before merge to `main`.
   - Bead 28: Cloudflare custom domain deployment makes `https://trackbaseline.com` the canonical public URL, with `www.trackbaseline.com` and workers.dev fallback triggers.
   - Bead 29: public distribution and Pro activation. Implementation commit `63e8d1bb59663fee502c18aad36141b5bd5fa1dd`; Worker deploy `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`; GitHub Release `v0.1.0` published.
+  - Bead 30: DataFast launch funnel analytics. Implementation commit `6474606e7ed151be888fd924abd6c8f5c3cbe9f2`; Worker deploy `fb899682-a797-4201-9842-4dfb72d5cecd`; DataFast funnels created with CLI.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
 - Canonical production URL is now `https://trackbaseline.com`.
 - Public install command is now `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release assets and checksum verification.
 - Production Pro secrets are active: Stripe Checkout, Stripe webhook verification, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. Do not print secret values.
+- DataFast website id is `6a0c48aa9a21aee7bf04cf6e`; tracking id is `dfid_PYprhfTkwwQKhkzRUhVtO`; CLI-created funnels are `baseline-install-funnel` and `baseline-pro-funnel`.
 - Existing checkout route supports Stripe payment links or direct Stripe Checkout sessions.
 - Existing admin/evaluator endpoints use `BASELINE_ADMIN_TOKEN`, Neon, and optional OpenAI evaluator.
 - Bibe Code reference patterns inspected:
@@ -37,7 +39,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 29 evidence/update commit is active after public release and production secret activation.
+- Bead 30 evidence/update is active after DataFast script deploy and funnel creation.
 
 ## Commands To Re-run
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
@@ -49,6 +51,7 @@
 - `cd web && npm audit --audit-level=high`
 - `bash scripts/build-release.sh`
 - `npm --prefix package pack --dry-run`
+- `DATAFAST_TOKEN=... make analytics-report`
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/skills-library && make verify-library && make verify-codex`
 
 ## Local QA Evidence
@@ -69,9 +72,11 @@
 - CI hardening: GitHub Actions initially caught a Swift 6 strict-concurrency failure in the macOS app (`[String: Any]` MCP payload crossing actor isolation). `BaselineMCPClient` is now `@MainActor`, and `make mac-build` runs `swift build -Xswiftc -strict-concurrency=complete`.
 - Bead 28 validation: `make verify-all`, `cd web && npm audit --audit-level=high`, `git diff --check`, Wrangler dry run, Wrangler deploy, DNS checks, apex/`www`/workers.dev health checks, landing markers, MCP docs, MCP unauth challenge, OAuth protected-resource metadata, hero asset, and checkout fail-closed smoke all passed.
 - Bead 29 validation: `make verify-all`, `bash scripts/build-release.sh`, `npm --prefix package pack --dry-run`, `npm --prefix web audit --audit-level=high`, `git diff --check`, local Worker `/docs/mcp` + `/install.sh` smoke, Wrangler deploy, live health, live docs/install route smoke, Stripe Checkout URL smoke, unsigned webhook fail-closed smoke, GitHub Release workflow `26091658646`, release asset/checksum inspection, public `install.sh` temp-home install smoke, and npm wrapper temp-home auto-download smoke all passed. `npm whoami` failed with `ENEEDAUTH`, so the npm package is prepared but not published.
+- Bead 30 validation: DataFast CLI docs checked; `npx @datafast/cli websites list` confirmed `trackbaseline.com`; `funnels create` created install and Pro funnels; `DATAFAST_PERIOD=last24h bash scripts/datafast-funnel-report.sh` returned overview/goals/pages/referrers/funnels; `npm run typecheck`, `bash -n scripts/datafast-funnel-report.sh`, `make verify-all`, `npm --prefix web audit --audit-level=high`, `git diff --check`, local Worker script/goal smoke, Wrangler deploy, and live script/goal/health smokes passed.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.
+- DataFast token handling must use no-echo or secret storage; a plain TTY `read` echoed the token once during setup and is recorded in `MISTAKES.md`.
 - Real paid pilot launch still needs an end-to-end checkout with an intended pilot email, webhook entitlement confirmation, magic-link login, token issuance, redacted sync, and remote MCP account-status smoke.
 - The remote MCP implementation is an HTTP JSON-RPC endpoint shaped for MCP clients; before public announcement it should be smoke-tested against the exact target clients that will register it.
 - `npm audit --audit-level=high` passes, but Wrangler/Miniflare currently pulls three moderate `ws` advisories; `npm audit fix --force` would downgrade Wrangler and is not applied.
