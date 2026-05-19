@@ -1,8 +1,17 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import {
+  appendCheckoutMetadata,
+  ensureCloudSchema,
+  handleCloudRoute,
+  prepareCheckoutAccount,
+  recordRunAggregates,
+  resolveRunIngestContext
+} from "./cloud";
 
 interface Env {
   DATABASE_URL?: string;
   STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID_PRO?: string;
   STRIPE_PRICE_ID_TEAM?: string;
   STRIPE_PAYMENT_LINK_PRO?: string;
@@ -13,6 +22,11 @@ interface Env {
   APP_URL?: string;
   BASELINE_API_TOKEN?: string;
   BASELINE_ADMIN_TOKEN?: string;
+  MAGIC_LINK_SECRET?: string;
+  TOKEN_HMAC_SECRET?: string;
+  MAGIC_LINK_DEV_ECHO?: string;
+  PRO_RETENTION_DAYS?: string;
+  FREE_RETENTION_DAYS?: string;
   OPENAI_API_KEY?: string;
   OPENAI_EVALUATOR_MODEL?: string;
 }
@@ -58,6 +72,8 @@ export default {
     const url = new URL(request.url);
     const read = request.method === "GET" || request.method === "HEAD";
     try {
+      const cloudResponse = await handleCloudRoute(request, env, ctx);
+      if (cloudResponse) return cloudResponse;
       if (read && url.pathname === "/") return html(landingPage(env));
       if (read && url.pathname === "/dashboard") return html(dashboardPage(env));
       if (read && url.pathname === "/admin") return html(adminPage(env));
@@ -69,7 +85,7 @@ export default {
       if (read && url.pathname === "/terms") return html(termsPage(env));
       if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
       if (read && url.pathname === "/sitemap.xml") return text(sitemap(baseURL(env, request)), "application/xml");
-      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN), lifecycle_email: Boolean(env.KLAVIYO_PRIVATE_API_KEY) });
+      if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN), lifecycle_email: Boolean(env.KLAVIYO_PRIVATE_API_KEY), pro_auth: Boolean(env.MAGIC_LINK_SECRET), pro_tokens: Boolean(env.TOKEN_HMAC_SECRET), stripe_webhook: Boolean(env.STRIPE_WEBHOOK_SECRET) });
       if (read && url.pathname === "/api/runs/latest") return latestRun(request, env);
       if (read && url.pathname === "/api/runs/timeline") return runTimeline(env);
       if (read && url.pathname === "/api/question-sets") return listQuestionSets(env, false);
@@ -181,27 +197,36 @@ async function listEvaluations(request: Request, env: Env): Promise<Response> {
 }
 
 async function ingestRun(request: Request, env: Env): Promise<Response> {
-  const auth = request.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return json({ ok: false, error: "missing bearer token" }, 401);
-  if (!env.BASELINE_API_TOKEN) return json({ ok: false, error: "BASELINE_API_TOKEN is not configured" }, 503);
-  if (auth.slice("Bearer ".length) !== env.BASELINE_API_TOKEN) return json({ ok: false, error: "invalid bearer token" }, 403);
   const payload = await request.json<RunPayload>();
   if (!payload.run_id) return json({ ok: false, error: "run_id required" }, 400);
   if (!env.DATABASE_URL) return json({ ok: false, error: "DATABASE_URL is not configured" }, 503);
   const sql = neon(env.DATABASE_URL);
   await ensureSchema(sql);
+  const ingestContext = await resolveRunIngestContext(request, env, sql);
+  if (ingestContext instanceof Response) return ingestContext;
+  const accountPrivatePayload = ingestContext.legacy ? null : JSON.stringify(payload);
   await sql`
-    insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload)
-    values (${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"}, ${payload.health_score || 0}, ${payload.mode || "unknown"}, ${JSON.stringify(payload)}::jsonb)
+    insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload, account_id, workspace_id, expires_at, account_private_payload, comparison_scope)
+    values (
+      ${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"},
+      ${payload.health_score || 0}, ${payload.mode || "unknown"}, ${JSON.stringify(payload)}::jsonb,
+      ${ingestContext.accountId}, ${ingestContext.workspaceId}, ${ingestContext.expiresAt}, ${accountPrivatePayload}::jsonb, ${ingestContext.comparisonScope}
+    )
     on conflict (id) do update set
       workspace = excluded.workspace,
       agent_kind = excluded.agent_kind,
       status = excluded.status,
       health_score = excluded.health_score,
       mode = excluded.mode,
-      payload = excluded.payload
+      payload = excluded.payload,
+      account_id = excluded.account_id,
+      workspace_id = excluded.workspace_id,
+      expires_at = excluded.expires_at,
+      account_private_payload = excluded.account_private_payload,
+      comparison_scope = excluded.comparison_scope
   `;
-  return json({ ok: true });
+  await recordRunAggregates(sql, payload, ingestContext);
+  return json({ ok: true, account_scoped: !ingestContext.legacy });
 }
 
 function configuredSQL(env: Env): NeonQueryFunction<false, false> | null {
@@ -457,8 +482,10 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   const input = request.method === "POST" ? await safeCheckoutInput(request) : {};
   const plan = (input.plan || url.searchParams.get("plan")) === "team" ? "team" : "pro";
   const email = normalizeOptionalEmail(input.email);
+  const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   const paymentLink = plan === "team" ? env.STRIPE_PAYMENT_LINK_TEAM : env.STRIPE_PAYMENT_LINK_PRO;
-  if (paymentLink) {
+  const canCreateCheckoutSession = Boolean(env.STRIPE_SECRET_KEY && price);
+  if (paymentLink && !canCreateCheckoutSession) {
     if (request.method === "POST") {
       ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, true));
       return json({ ok: true, url: paymentLink });
@@ -468,7 +495,6 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   if (!env.STRIPE_SECRET_KEY) {
     return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links." }, 503);
   }
-  const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   if (!price) return json({ ok: false, error: "Stripe price id is not configured for " + plan }, 503);
   const origin = baseURL(env, request);
   const body = new URLSearchParams({
@@ -483,7 +509,13 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
     "subscription_data[metadata][plan]": plan,
     "subscription_data[metadata][product_name]": "Baseline Pro Monitoring"
   });
-  if (email) body.set("customer_email", email);
+  let checkoutAccount = null;
+  if (email) {
+    if (!env.DATABASE_URL) return json({ ok: false, error: "DATABASE_URL is required for account checkout" }, 503);
+    checkoutAccount = await prepareCheckoutAccount(neon(env.DATABASE_URL), env, email, plan);
+  }
+  appendCheckoutMetadata(body, checkoutAccount, plan);
+  if (email && !checkoutAccount) body.set("customer_email", email);
   const resp = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: {
@@ -644,6 +676,7 @@ async function ensureSchema(sql: NeonQueryFunction<false, false>): Promise<void>
     created_at timestamptz not null default now()
   )`;
   await sql`create index if not exists llm_evaluations_run_idx on llm_evaluations (run_id, created_at desc)`;
+  await ensureCloudSchema(sql);
 }
 
 function landingPage(env: Env): string {
@@ -885,6 +918,12 @@ openclaw mcp list
       <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
 baseline doctor
 baseline sync push</code></pre>
+      <h2>Remote MCP</h2>
+      <p>Pro accounts can also connect to the cloud MCP at <code>${escapeHTML(baseURL(env))}/mcp</code>. The remote MCP never runs local probes; it reads account history, hotspots, self-history comparisons, workspace tokens, and Stripe portal handoffs after magic-link session auth.</p>
+      <pre><code>POST ${escapeHTML(baseURL(env))}/api/auth/magic-link
+POST ${escapeHTML(baseURL(env))}/api/auth/consume
+Authorization: Bearer YOUR_SESSION_TOKEN
+POST ${escapeHTML(baseURL(env))}/mcp</code></pre>
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
       <h2>Recommended first Good Baseline</h2>
