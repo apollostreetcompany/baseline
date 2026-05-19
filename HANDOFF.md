@@ -32,7 +32,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 27 implementation is complete locally and deployed; commit/push/evidence is pending.
+- Bead 27 implementation is complete locally, deployed, and recorded with implementation commit `964bd52`.
 
 ## Commands To Re-run
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`
