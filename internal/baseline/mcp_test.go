@@ -39,6 +39,12 @@ func TestMCPScheduleRunTriggersConfiguredEval(t *testing.T) {
 func TestMCPRunStartsAsyncAndReportCanSeeRunningStatus(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	t.Setenv("BASELINE_ASYNC_EXE", "/bin/echo")
+	cfg := defaultConfig()
+	cfg.Target.Runtime = "custom"
+	cfg.Target.Packs = "baseline"
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 	payload, err := callMCPTool("baseline_run", map[string]any{"packs": "baseline"})
 	if err != nil {
 		t.Fatal(err)

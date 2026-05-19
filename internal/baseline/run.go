@@ -502,6 +502,9 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 			s.observeNumber("question."+q.PackID+"."+q.ID+".total_tokens", float64(*result.TotalTokens))
 		}
 		s.observe("question."+q.PackID+"."+q.ID+".token_status", result.TokenStatus, result.TokenStatus)
+		if result.SessionID != "" {
+			s.observe("question."+q.PackID+"."+q.ID+".session_id", result.SessionID, result.SessionID)
+		}
 	} else {
 		s.observeNumber("question."+q.PackID+"."+q.ID+".latency_ms", float64(duration))
 	}
@@ -515,6 +518,7 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 		ExpectedBehavior: q.ExpectedBehavior,
 		Output:           result.Output,
 		ScrubbedOutput:   scrubbed,
+		SessionID:        result.SessionID,
 		DurationMS:       duration,
 		Status:           "ok",
 	}
@@ -581,19 +585,21 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 		command = strings.TrimSpace(os.Getenv("BASELINE_AGENT_COMMAND"))
 	}
 	if command != "" {
-		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(targetTimeoutSeconds(s.cfg.Target))*time.Second)
+		timeoutSeconds := targetTimeoutSeconds(s.cfg.Target)
+		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(timeoutSeconds)*time.Second)
 		defer cancel()
+		sendAt := time.Now().UTC()
 		cmd := exec.CommandContext(ctx, "sh", "-c", command)
 		cmd.Dir = s.commandDir()
-		cmd.Env = append(os.Environ(), "BASELINE_PROMPT="+q.Prompt)
-		sendAt := time.Now().UTC()
+		cmd.Env = append(os.Environ(), append(probeDeadlineEnv(s.runID, q, timeoutSeconds, sendAt), "BASELINE_PROMPT="+baselinePromptForProbe(q.Prompt))...)
 		out, err := cmd.CombinedOutput()
 		receivedAt := time.Now().UTC()
+		output, sessionID := extractBaselineSessionID(string(out))
 		msg := ProbeMessage{
 			RunID:              s.runID,
 			PackID:             q.PackID,
 			ProbeID:            q.ID,
-			SessionID:          "",
+			SessionID:          sessionID,
 			SystemSendAt:       sendAt,
 			BaselineReceivedAt: receivedAt,
 			DurationMS:         receivedAt.Sub(sendAt).Milliseconds(),
@@ -601,12 +607,12 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 			TokenSource:        "custom agent command",
 		}
 		if ctx.Err() == context.DeadlineExceeded {
-			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("agent command timed out")
+			return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("agent command timed out")
 		}
 		if err != nil {
-			return AgentProbeResult{Output: string(out), ProbeMessage: msg}, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+			return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("%w: %s", err, strings.TrimSpace(output))
 		}
-		return AgentProbeResult{Output: string(out), ProbeMessage: msg}, nil
+		return AgentProbeResult{Output: output, ProbeMessage: msg}, nil
 	}
 	if s.cfg.Target.Runtime == "hermes" {
 		return runHermesProbeWithTarget(s.ctx, s.runID, q, s.cfg.Target, s.commandDir())

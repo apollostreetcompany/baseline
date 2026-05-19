@@ -60,6 +60,7 @@ type ProbeResponse struct {
 	Output           string `json:"output,omitempty"`
 	ScrubbedOutput   string `json:"scrubbed_output,omitempty"`
 	Error            string `json:"error,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
 	DurationMS       int64  `json:"duration_ms"`
 	Status           string `json:"status"`
 }

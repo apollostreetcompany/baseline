@@ -26,38 +26,36 @@ func runHermesPromptMeasured(ctx context.Context, runID string, q Question, targ
 		return "", ProbeMessage{}, err
 	}
 
-	args := []string{"chat", "-Q", "-q", q.Prompt, "--source", "baseline"}
+	prompt := baselinePromptForProbe(q.Prompt)
+	args := []string{"chat", "-Q", "--pass-session-id", "-q", prompt, "--source", "baseline"}
 	if target.ModelPolicy == "pinned" && strings.TrimSpace(target.PinnedModel) != "" {
-		args = append([]string{"chat", "-Q", "-m", strings.TrimSpace(target.PinnedModel), "-q", q.Prompt, "--source", "baseline"})
+		args = append([]string{"chat", "-Q", "--pass-session-id", "-m", strings.TrimSpace(target.PinnedModel), "-q", prompt, "--source", "baseline"})
 	}
 
-	cmdCtx, cancel := context.WithTimeout(ctx, time.Duration(targetTimeoutSeconds(target))*time.Second)
+	timeoutSeconds := targetTimeoutSeconds(target)
+	cmdCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
+	sendAt := time.Now().UTC()
 	cmd := exec.CommandContext(cmdCtx, path, args...)
 	if workspace != "" {
 		cmd.Dir = workspace
 	}
-	cmd.Env = append(os.Environ(),
-		"BASELINE_RUN_ID="+runID,
-		"BASELINE_PROBE_ID="+q.ID,
-		"BASELINE_PACK_ID="+q.PackID,
-	)
+	cmd.Env = append(os.Environ(), probeDeadlineEnv(runID, q, timeoutSeconds, sendAt)...)
 
-	sendAt := time.Now().UTC()
 	out, err := cmd.CombinedOutput()
 	receivedAt := time.Now().UTC()
+	output, sessionID := extractBaselineSessionID(string(out))
 	msg := ProbeMessage{
 		RunID:              runID,
 		PackID:             q.PackID,
 		ProbeID:            q.ID,
-		SessionID:          "",
+		SessionID:          sessionID,
 		SystemSendAt:       sendAt,
 		BaselineReceivedAt: receivedAt,
 		DurationMS:         receivedAt.Sub(sendAt).Milliseconds(),
 		TokenStatus:        "unavailable",
 		TokenSource:        "hermes cli",
 	}
-	output := string(out)
 	if cmdCtx.Err() == context.DeadlineExceeded {
 		return output, msg, fmt.Errorf("hermes timed out")
 	}

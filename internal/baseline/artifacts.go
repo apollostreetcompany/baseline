@@ -147,6 +147,9 @@ func renderResponsesMarkdown(run Run) string {
 		if response.Error != "" {
 			fmt.Fprintf(&b, "- Error: `%s`\n", response.Error)
 		}
+		if response.SessionID != "" {
+			fmt.Fprintf(&b, "- Session ID: `%s`\n", response.SessionID)
+		}
 		b.WriteString("\nPrompt:\n\n````text\n")
 		b.WriteString(response.Prompt)
 		b.WriteString("\n````\n\nResponse:\n\n````text\n")
