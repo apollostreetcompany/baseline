@@ -35,6 +35,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 25 comparison v1 exposes self-history only while storing account-private and benchmark-ready aggregate-safe fields for later team/anonymous modes behind consent and feature flags.
 - Bead 27 preserves the deployed Bead 25 cloud account and remote MCP surface while replacing the homepage with the `landing-a` design/assets from `/Users/kikimac/Downloads/baseline.zip`; the latest Cloudflare Worker deploy is version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 - BrandOS on this machine must use `python3` and the bundled `.prose` validator fallback when `prose` or PyYAML are unavailable; the local `brand-os-studio` skill has been repaired accordingly.
+- Bead 28 makes `https://trackbaseline.com` the canonical production URL, attaches `trackbaseline.com` and `www.trackbaseline.com` as Cloudflare Worker custom domains, keeps the workers.dev fallback route enabled, and sets Worker `APP_URL` to the apex domain.
 
 ## State
 ### Done
@@ -66,9 +67,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 25: Implemented and deployed cloud accounts, invite/magic-link sessions, Stripe webhook entitlement lifecycle, account-scoped HMAC workspace tokens, self-history/hotspot/compare APIs, remote MCP adapter, SwiftUI macOS hotspot dashboard, and skill-audited deployment notes. Latest Worker deploy version: `dfc2198f-9151-4a64-8511-4e25d3c2d529`.
 - [x] Bead 27: Rebuilt the homepage to match `landing-a`, preserved Bead 25 cloud routes/schema, repaired the local BrandOS skill runtime assumptions, and deployed Cloudflare Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`.
 - [x] Integration: Opened PR #1 (`https://github.com/apollostreetcompany/baseline/pull/1`) from `codex/integrate/bead-27-main-ready` to merge Bead 25 cloud/Mac functionality and Bead 27 Landing A into `main`.
+- [x] Bead 28: Deployed the Cloudflare Worker to `https://trackbaseline.com` and `https://www.trackbaseline.com`, verified DNS, health, landing, MCP docs/auth challenge, protected-resource metadata, asset, checkout fail-closed, and fallback workers.dev route. Latest Worker deploy version: `0d0924c3-5c8e-4029-9327-369a73588786`.
 
 ### Now
-- PR #1 is the main-ready merge candidate. Merge after repository checks are green; do not direct-commit to `main`.
+- `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
 - CI now includes a macOS `verify` workflow for PRs, and local `make mac-build` uses Swift strict concurrency to match GitHub's Swift 6 behavior.
 - Bead 26 remains the next production work after merge: configure Pro secrets (`MAGIC_LINK_SECRET`, `TOKEN_HMAC_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET`, Klaviyo), then run an end-to-end invited account checkout/token/sync test. Risk class: High because it activates live auth and billing.
 - `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `4f1b94a0-543a-4cb2-8207-62825fb29594`.

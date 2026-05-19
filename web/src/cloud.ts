@@ -1510,5 +1510,5 @@ function json(payload: unknown, status = 200, extraHeaders?: Record<string, stri
 function baseURL(env: CloudEnv, request?: Request): string {
   if (env.APP_URL) return env.APP_URL.replace(/\/$/, "");
   if (request) return new URL(request.url).origin;
-  return "https://baseline-ai.workers.dev";
+  return "https://trackbaseline.com";
 }

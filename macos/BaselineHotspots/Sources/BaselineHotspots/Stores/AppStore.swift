@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class AppStore: ObservableObject {
-  @Published var endpointText = "https://baseline-ai.ryan-borker.workers.dev"
+  @Published var endpointText = "https://trackbaseline.com"
   @Published var sessionToken = ""
   @Published var signInEmail = ""
   @Published var pastedMagicLink = ""

@@ -3,23 +3,24 @@
 ## Current Production
 
 - Worker: `baseline-ai`
-- URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `4f1b94a0-543a-4cb2-8207-62825fb29594`
-- Current production source branch: `codex/feat/bead-27-landing-a-brand-os`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`
-- Notes: current production combines the Bead 25 cloud account/remote MCP surface with the Bead 27 `landing-a` homepage redesign.
+- URL: https://trackbaseline.com
+- Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
+- Current Version ID: `0d0924c3-5c8e-4029-9327-369a73588786`
+- Current production source branch: `codex/deploy/trackbaseline-domain`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
+- Notes: current production combines the Bead 25 cloud account/remote MCP surface with the Bead 27 `landing-a` homepage redesign and Bead 28 `trackbaseline.com` custom-domain triggers.
 
 ## 2026-05-14 Cloudflare Deploy
 
 - Worker: `baseline-ai`
-- URL: https://baseline-ai.ryan-borker.workers.dev
+- URL: https://trackbaseline.com
 - Version ID: `b143ba10-4546-4d89-8ae5-3c5d920ec326`
 - Commit deployed: `73346f7 feat(bead-11): add distribution packages`
 
 ## 2026-05-14 MCP Schedule Docs Deploy
 
 - Worker: `baseline-ai`
-- URL: https://baseline-ai.ryan-borker.workers.dev
+- URL: https://trackbaseline.com
 - Version ID: `3999eaaf-d845-487f-a6a7-beaf41027773`
 - Change: MCP docs now refer to `baseline_schedule` instead of the hidden legacy config tool.
 
@@ -84,14 +85,14 @@ Optional or rollout-dependent secrets:
 
 Stripe webhook configuration:
 
-- Endpoint: `https://baseline-ai.ryan-borker.workers.dev/api/stripe/webhook`
+- Endpoint: `https://trackbaseline.com/api/stripe/webhook`
 - Events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
 - Verification: Worker reads the raw body and validates `Stripe-Signature` against `STRIPE_WEBHOOK_SECRET`.
 - Idempotency: `stripe_events.stripe_event_id` is unique; duplicate events return success without reprocessing.
 
 Remote MCP configuration:
 
-- Endpoint: `https://baseline-ai.ryan-borker.workers.dev/mcp`
+- Endpoint: `https://trackbaseline.com/mcp`
 - Transport: HTTP JSON-RPC endpoint shaped for remote MCP clients.
 - Auth: Bearer account session created through magic-link auth. Unauthenticated calls return a `WWW-Authenticate` challenge and protected-resource metadata.
 - Tools: `baseline_account`, `baseline_workspaces`, `baseline_history`, `baseline_hotspots`, `baseline_compare`, `baseline_subscription`, `baseline_admin`.
@@ -116,8 +117,8 @@ Preflight before deploy:
 ```sh
 make verify-all
 cd web && npm run deploy
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
-curl -fsS -X POST https://baseline-ai.ryan-borker.workers.dev/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS -X POST https://trackbaseline.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
 Expected unauthenticated MCP smoke result:
@@ -141,13 +142,13 @@ Deployment result:
 Live smoke on 2026-05-19:
 
 ```sh
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
-curl -i -sS https://baseline-ai.ryan-borker.workers.dev/mcp \
+curl -fsS https://trackbaseline.com/api/health
+curl -i -sS https://trackbaseline.com/mcp \
   -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/.well-known/oauth-protected-resource
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/docs/mcp | rg -n "Remote MCP|/mcp|magic-link"
-curl -sS -X POST https://baseline-ai.ryan-borker.workers.dev/api/checkout \
+curl -fsS https://trackbaseline.com/.well-known/oauth-protected-resource
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Remote MCP|/mcp|magic-link"
+curl -sS -X POST https://trackbaseline.com/api/checkout \
   -H 'content-type: application/json' \
   --data '{"email":"pilot@example.com","plan":"pro"}'
 ```
@@ -165,12 +166,79 @@ Skill audit:
 - Review artifact: `docs/reviews/2026-05-19-bead-25-skill-audit.md`.
 - Applied fixes from the audit: Stripe `invoice.payment_failed` dunning state, lifecycle outbox rows, token scope enforcement, past-due grace without new token creation, and more discoverable MCP tool schemas.
 
+## 2026-05-19 Trackbaseline Custom Domain
+
+Bead 28 attaches the Worker to the public launch domain and makes that domain the canonical application origin.
+
+Cloudflare zone:
+
+- Domain: `trackbaseline.com`
+- Nameservers: `bingo.ns.cloudflare.com`, `harlan.ns.cloudflare.com`
+- Worker custom domains: `trackbaseline.com`, `www.trackbaseline.com`
+- Fallback workers.dev route: `https://baseline-ai.ryan-borker.workers.dev`
+- `APP_URL`: `https://trackbaseline.com`
+- Preview URLs: disabled explicitly.
+
+Deployment result:
+
+- Worker: `baseline-ai`
+- URL: https://trackbaseline.com
+- Version ID: `0d0924c3-5c8e-4029-9327-369a73588786`
+
+DNS verification:
+
+```sh
+dig +short NS trackbaseline.com
+dig +short A trackbaseline.com
+dig +short AAAA trackbaseline.com
+dig +short A www.trackbaseline.com
+dig +short AAAA www.trackbaseline.com
+```
+
+Results:
+
+- Nameservers returned `bingo.ns.cloudflare.com` and `harlan.ns.cloudflare.com`.
+- Apex and `www` returned Cloudflare A/AAAA records.
+
+Live smoke:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Your agent forgot|Three agents|Fourteen probes|In the line"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Remote MCP|https://trackbaseline.com/mcp|magic-link"
+curl -i -sS https://trackbaseline.com/mcp \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+curl -fsS https://trackbaseline.com/.well-known/oauth-protected-resource
+curl -I -fsS https://trackbaseline.com/assets/baseline-court-serve.png
+curl -sS -X POST https://trackbaseline.com/api/checkout \
+  -H 'content-type: application/json' \
+  --data '{"email":"pilot@example.com","plan":"pro"}'
+curl -fsS https://www.trackbaseline.com/api/health
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
+```
+
+Results:
+
+- Apex health returned `db:true`, `stripe:false`, `token_required:true`, `pro_auth:false`, `pro_tokens:false`, `stripe_webhook:false`.
+- Landing page served the Landing A copy and imagery.
+- Remote MCP docs and OAuth protected-resource metadata use `https://trackbaseline.com`.
+- Unauthenticated `/mcp` returned HTTP `401` with a `WWW-Authenticate` challenge pointing at `https://trackbaseline.com/.well-known/oauth-protected-resource`.
+- Hero image returned `HTTP/2 200`.
+- Checkout still fails closed until Stripe secrets are configured.
+- `www.trackbaseline.com` and the fallback workers.dev route both returned healthy Worker responses.
+
+Rollback:
+
+- Preferred code rollback: `cd web && npx wrangler rollback 4f1b94a0-543a-4cb2-8207-62825fb29594`
+- If the domain attachment itself is wrong, remove the `routes` entries from `web/wrangler.jsonc`, redeploy, and verify the fallback workers.dev route.
+
 ## 2026-05-19 Brand Landing Assets
 
 - Worker static assets are now configured through `web/wrangler.jsonc` with `assets.directory = "./public"`.
 - Current image assets live under `web/public/assets/` and are uploaded by Wrangler with the Worker.
 - Deployed Worker version: `5cc879a3-983d-4e59-a620-e8abd8d70a99`
-- Deployed URL: https://baseline-ai.ryan-borker.workers.dev
+- Deployed URL: https://trackbaseline.com
 - Implementation commit deployed: `257c17f`
 - Local verification path:
 
@@ -201,11 +269,11 @@ Live deployment verification on 2026-05-19:
 ```sh
 cd web
 npm run deploy
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/ | rg -n "Baseline.ai|Keep coding agents|Pro monitoring"
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/blog | rg -n "Blog stub|Pro Account Architecture|field notes"
-curl -I -fsS https://baseline-ai.ryan-borker.workers.dev/assets/baseline-court-robot.png
-curl -sS -X POST https://baseline-ai.ryan-borker.workers.dev/api/checkout -H 'content-type: application/json' --data '{"email":"pilot@example.com","plan":"pro"}'
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Baseline.ai|Keep coding agents|Pro monitoring"
+curl -fsS https://trackbaseline.com/blog | rg -n "Blog stub|Pro Account Architecture|field notes"
+curl -I -fsS https://trackbaseline.com/assets/baseline-court-robot.png
+curl -sS -X POST https://trackbaseline.com/api/checkout -H 'content-type: application/json' --data '{"email":"pilot@example.com","plan":"pro"}'
 ```
 
 Results:
@@ -222,7 +290,7 @@ Bead 27 replaces the homepage with a Worker-native port of `/Users/kikimac/Downl
 Deployment result:
 
 - Worker: `baseline-ai`
-- URL: https://baseline-ai.ryan-borker.workers.dev
+- URL: https://trackbaseline.com
 - Version ID: `4f1b94a0-543a-4cb2-8207-62825fb29594`
 - Source branch: `codex/feat/bead-27-landing-a-brand-os`
 - Source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-landing-a-brand-os`
@@ -249,11 +317,11 @@ Local smoke:
 Live smoke:
 
 ```sh
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/ | rg -n "Your agent forgot|Three agents|Fourteen probes|In the line"
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/docs/mcp | rg -n "Remote MCP|/mcp|magic-link"
-curl -I -fsS https://baseline-ai.ryan-borker.workers.dev/assets/baseline-court-serve.png
-curl -sS -X POST https://baseline-ai.ryan-borker.workers.dev/api/checkout \
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Your agent forgot|Three agents|Fourteen probes|In the line"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Remote MCP|/mcp|magic-link"
+curl -I -fsS https://trackbaseline.com/assets/baseline-court-serve.png
+curl -sS -X POST https://trackbaseline.com/api/checkout \
   -H 'content-type: application/json' \
   --data '{"email":"pilot@example.com","plan":"pro"}'
 ```
@@ -281,12 +349,12 @@ Rollback:
 Commands run:
 
 ```sh
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
+curl -fsS https://trackbaseline.com/api/health
 ./bin/baseline doctor
 ./bin/baseline sync status
 ./bin/baseline sync push
-curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/runs/latest
-curl -fsS -X POST https://baseline-ai.ryan-borker.workers.dev/api/admin/evaluate
+curl -fsS https://trackbaseline.com/api/runs/latest
+curl -fsS -X POST https://trackbaseline.com/api/admin/evaluate
 ```
 
 Results:
