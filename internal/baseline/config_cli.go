@@ -340,6 +340,9 @@ func validateConfig(cfg Config) []string {
 	if cfg.Target.TimeoutSeconds < 30 || cfg.Target.TimeoutSeconds > 900 {
 		issues = append(issues, "target.timeout_seconds must be between 30 and 900")
 	}
+	if cfg.Target.Runtime == "hermes" && strings.EqualFold(strings.TrimSpace(configFacts(cfg)["project"]), "Baseline.ai") {
+		issues = append(issues, "memory_seeds.project is still the static default Baseline.ai for Hermes; set it to dynamic or to the actual Hermes operating project before accepting a Good Baseline")
+	}
 	known := map[string]bool{}
 	for _, pack := range canonicalMonitorPacks(configFacts(cfg)) {
 		known[pack.ID] = true

@@ -82,7 +82,7 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	}
 
 	checks := state.checks
-	status, score := summarize(checks)
+	status, score, qualityScore, slowScore := summarizeWithBreakdown(checks)
 	findings := findingsFromChecks(checks)
 	knownGoodFindings, err := compareObservationsToGood(db, state.observations, scopeKeyForWorkspace(opts.Workspace), configHash(cfg))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -91,6 +91,10 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 	findings = append(findings, knownGoodFindings...)
 	if len(knownGoodFindings) > 0 && score > 70 {
 		score -= 10
+		qualityScore -= 10
+		if qualityScore < 0 {
+			qualityScore = 0
+		}
 		if status == "ok" {
 			status = "warning"
 		}
@@ -103,6 +107,8 @@ func RunBaseline(ctx context.Context, opts RunOptions) (Run, error) {
 		DurationMS:         time.Since(start).Milliseconds(),
 		Status:             status,
 		HealthScore:        score,
+		QualityScore:       qualityScore,
+		SlowScore:          slowScore,
 		Workspace:          opts.Workspace,
 		ScopeKey:           scopeKeyForWorkspace(opts.Workspace),
 		ConfigHash:         configHash(cfg),
@@ -539,13 +545,18 @@ func (s *runState) recordQuestionOutcome(outcome questionProbeOutcome) {
 		severity = 1
 		finding = "Agent response may have drifted on " + q.Dimension + ": missing " + strings.Join(missing, ", ")
 	}
-	if duration > 60000 {
-		status = "warning"
-		severity = 1
-		finding = fmt.Sprintf("Agent response was slow for %s: %dms.", q.Dimension, duration)
-	}
 	metrics := map[string]float64{
 		"duration_ms": float64(duration),
+	}
+	if duration > slowProbeThresholdMS(s.cfg.Target) {
+		status = "warning"
+		severity = 1
+		metrics["slow_probe_threshold_ms"] = float64(slowProbeThresholdMS(s.cfg.Target))
+		if score < 0.6 {
+			finding += fmt.Sprintf("; also slow: %dms.", duration)
+		} else {
+			finding = fmt.Sprintf("Agent response was slow for %s: %dms.", q.Dimension, duration)
+		}
 	}
 	if result.TokenStatus == "fresh" && result.InputTokens != nil {
 		metrics["input_tokens"] = float64(*result.InputTokens)
@@ -606,6 +617,7 @@ func (s *runState) askAgentMeasured(q Question) (AgentProbeResult, error) {
 			TokenStatus:        "unavailable",
 			TokenSource:        "custom agent command",
 		}
+		output = extractBaselineAgentMetadata(output, &msg)
 		if ctx.Err() == context.DeadlineExceeded {
 			return AgentProbeResult{Output: output, ProbeMessage: msg}, fmt.Errorf("agent command timed out")
 		}
@@ -697,11 +709,21 @@ func scoreQuestion(answer string, q Question) (float64, []string) {
 	var missing []string
 	matches := 0
 	for _, fact := range q.ExpectedFacts {
+		displayFact := strings.TrimSpace(fact)
 		fact = strings.TrimSpace(strings.ToLower(fact))
 		if fact == "" || fact == "unknown" {
 			continue
 		}
-		if strings.Contains(lower, fact) {
+		alternatives := strings.Split(fact, "|")
+		altHit := false
+		for _, alternative := range alternatives {
+			alternative = strings.TrimSpace(alternative)
+			if alternative != "" && strings.Contains(lower, alternative) {
+				altHit = true
+				break
+			}
+		}
+		if altHit {
 			matches++
 			continue
 		}
@@ -718,7 +740,7 @@ func scoreQuestion(answer string, q Question) (float64, []string) {
 		if partHit {
 			matches++
 		} else {
-			missing = append(missing, fact)
+			missing = append(missing, displayFact)
 		}
 	}
 	if matches == 0 && len(missing) == 0 {
@@ -732,27 +754,44 @@ func scoreQuestion(answer string, q Question) (float64, []string) {
 }
 
 func summarize(checks []CheckResult) (string, int) {
+	status, score, _, _ := summarizeWithBreakdown(checks)
+	return status, score
+}
+
+func summarizeWithBreakdown(checks []CheckResult) (string, int, int, int) {
 	status := "ok"
-	score := 100
+	qualityScore := 100
+	questionCount := 0
+	underSlowThreshold := 0
 	for _, c := range checks {
-		switch c.Severity {
-		case 2:
+		if c.Severity == 2 {
 			status = "critical"
-			score -= 28
-		case 1:
-			if status == "ok" {
-				status = "warning"
-			}
-			score -= 8
+			qualityScore -= 28
+		} else if c.Severity == 1 && status == "ok" {
+			status = "warning"
 		}
 		if c.Score < 80 {
-			score -= int((80 - c.Score) / 10)
+			qualityScore -= int((80 - c.Score) / 10)
+		}
+		if strings.HasPrefix(c.CheckID, "question.") {
+			questionCount++
+			threshold := int64(60000)
+			if c.Metrics != nil && c.Metrics["slow_probe_threshold_ms"] > 0 {
+				threshold = int64(c.Metrics["slow_probe_threshold_ms"])
+			}
+			if c.DurationMS <= threshold {
+				underSlowThreshold++
+			}
 		}
 	}
-	if score < 0 {
-		score = 0
+	if qualityScore < 0 {
+		qualityScore = 0
 	}
-	return status, score
+	slowScore := 100
+	if questionCount > 0 {
+		slowScore = int(float64(underSlowThreshold) / float64(questionCount) * 100)
+	}
+	return status, qualityScore, qualityScore, slowScore
 }
 
 func findingsFromChecks(checks []CheckResult) []Finding {
@@ -790,6 +829,12 @@ func suggestedFix(checkID string) string {
 	default:
 		return "Run baseline report and compare against accepted Good Baselines."
 	}
+}
+
+func slowProbeThresholdMS(target BaselineTarget) int64 {
+	// <60s remains the default expectation for an agent response. The split
+	// slow score records misses without collapsing the quality/health score.
+	return 60000
 }
 
 func thresholdLatency(ms int64, warn int64, critical int64) (string, int, float64) {

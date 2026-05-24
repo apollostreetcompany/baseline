@@ -174,11 +174,69 @@ func TestRecordedQuestionCheckUsesProbeDuration(t *testing.T) {
 	}
 }
 
+func TestRunMetricsIncludesSplitScoresAndLatencyDistribution(t *testing.T) {
+	run := Run{
+		ID:           "run_metrics",
+		Status:       "warning",
+		HealthScore:  92,
+		QualityScore: 96,
+		SlowScore:    40,
+		Checks: []CheckResult{
+			{CheckID: "question.fast", DurationMS: 42000, Score: 100, Metrics: map[string]float64{"duration_ms": 42000}},
+			{CheckID: "question.slow", DurationMS: 125000, Score: 100, Metrics: map[string]float64{"duration_ms": 125000, "slow_probe_threshold_ms": 60000}},
+			{CheckID: "runtime.hermes", DurationMS: 1, Score: 100},
+		},
+	}
+	metrics := runMetrics(run)
+	if metrics["quality_score"] != 96 || metrics["slow_score"] != 40 {
+		t.Fatalf("expected split quality/slow scores in metrics, got %+v", metrics)
+	}
+	dist, ok := metrics["question_latency_distribution"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected latency distribution metadata, got %+v", metrics["question_latency_distribution"])
+	}
+	if dist["under_60s"] != 1 || dist["over_120s"] != 1 || dist["max_ms"] != int64(125000) {
+		t.Fatalf("unexpected latency distribution: %+v", dist)
+	}
+	report := renderRunReportMarkdown(run)
+	for _, want := range []string{"Quality score", "Slow score", "Latency distribution", "over 120s"} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("report missing %q:\n%s", want, report)
+		}
+	}
+}
+
+func TestSlowProbeKeepsQualityScoreAndPreservesDriftFinding(t *testing.T) {
+	state := &runState{runID: "run_slow", cfg: Config{Target: BaselineTarget{Runtime: "hermes"}}}
+	sendAt := time.Now().UTC()
+	state.recordQuestionOutcome(questionProbeOutcome{
+		Question: Question{PackID: "project_memory", ID: "objective", ExpectedFacts: []string{"Baseline.ai"}, Dimension: "project_memory"},
+		Result: AgentProbeResult{
+			Output:       "Chosen Portion growth",
+			ProbeMessage: ProbeMessage{RunID: "run_slow", PackID: "project_memory", ProbeID: "objective", SystemSendAt: sendAt, BaselineReceivedAt: sendAt.Add(61 * time.Second), DurationMS: 61000},
+		},
+	})
+	if len(state.checks) != 1 {
+		t.Fatalf("expected check, got %+v", state.checks)
+	}
+	check := state.checks[0]
+	if check.Score != 0 {
+		t.Fatalf("expected content score to remain 0, got %+v", check)
+	}
+	if !strings.Contains(check.Finding, "missing Baseline.ai") || !strings.Contains(check.Finding, "also slow") {
+		t.Fatalf("finding should preserve drift and latency, got %q", check.Finding)
+	}
+	status, overall, quality, slow := summarizeWithBreakdown(state.checks)
+	if status != "warning" || overall == 0 || quality == 0 || slow >= quality {
+		t.Fatalf("expected split scoring with nonzero overall and slower slow score, got status=%s overall=%d quality=%d slow=%d", status, overall, quality, slow)
+	}
+}
+
 func TestCustomAgentCommandReceivesDeadlineEnvAndRecordsHermesSessionID(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "env.txt")
 	promptFile := filepath.Join(dir, "prompt.txt")
-	command := "printenv | grep '^BASELINE_\\|^OTEL_RESOURCE_ATTRIBUTES=' | sort > " + quoteShell(envFile) + "; printf '%s' \"$BASELINE_PROMPT\" > " + quoteShell(promptFile) + "; printf 'baseline ok\\nBASELINE_HERMES_SESSION_ID: custom_session_456\\n'"
+	command := "printenv | grep '^BASELINE_\\|^OTEL_RESOURCE_ATTRIBUTES=' | sort > " + quoteShell(envFile) + "; printf '%s' \"$BASELINE_PROMPT\" > " + quoteShell(promptFile) + "; printf 'baseline ok\\nBASELINE_AGENT_METADATA_JSON: {\"model\":\"gpt-test\",\"model_provider\":\"test-provider\",\"input_tokens\":11,\"output_tokens\":7,\"total_tokens\":18,\"context_tokens\":99}\\nBASELINE_HERMES_SESSION_ID: custom_session_456\\n'"
 	state := &runState{
 		ctx:   context.Background(),
 		runID: "run_custom",
@@ -198,6 +256,12 @@ func TestCustomAgentCommandReceivesDeadlineEnvAndRecordsHermesSessionID(t *testi
 	}
 	if result.SessionID != "custom_session_456" {
 		t.Fatalf("expected custom command session id to be recorded, got %+v", result.ProbeMessage)
+	}
+	if result.TokenStatus != "fresh" || result.TokenSource != "agent metadata" || result.Model != "gpt-test" || result.ModelProvider != "test-provider" {
+		t.Fatalf("expected model metadata to be recorded, got %+v", result.ProbeMessage)
+	}
+	if result.TotalTokens == nil || *result.TotalTokens != 18 || result.ContextTokens == nil || *result.ContextTokens != 99 {
+		t.Fatalf("expected token metadata to be recorded, got %+v", result.ProbeMessage)
 	}
 	promptBytes, err := os.ReadFile(promptFile)
 	if err != nil {
