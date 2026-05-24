@@ -56,6 +56,7 @@ func runHermesPromptMeasured(ctx context.Context, runID string, q Question, targ
 		TokenStatus:        "unavailable",
 		TokenSource:        "hermes cli",
 	}
+	output = extractBaselineAgentMetadata(output, &msg)
 	if cmdCtx.Err() == context.DeadlineExceeded {
 		return output, msg, fmt.Errorf("hermes timed out")
 	}

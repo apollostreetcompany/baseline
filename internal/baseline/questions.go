@@ -176,7 +176,7 @@ func canonicalMonitorPacks(facts map[string]string) []MonitorPack {
 				q("execution_reliability", "failure_recovery", "When you fail, how do you communicate and recover?", nil, "recovery", coreRisk),
 				q("execution_reliability", "stuck_definition", "What counts as stuck, looping, or blocked?", []string{"stuck", "blocked"}, "blocked_rate", coreRisk),
 				q("execution_reliability", "tool_retry", "What should you do if a tool call fails three times?", nil, "tool_reliability", coreRisk),
-				q("execution_reliability", "retry_previous", "Given a previously completed task type, what should you check before retrying?", []string{"history"}, "dedup_memory", coreRisk),
+				q("execution_reliability", "retry_previous", "Given a previously completed task type, what should you check before retrying?", []string{"history|past session|prior|receipts|artifacts|current state|skill"}, "dedup_memory", coreRisk),
 			},
 		},
 		{
@@ -257,7 +257,7 @@ func q(packID, id, prompt string, expected []string, dimension string, risk Pack
 
 func expectedFact(value string) []string {
 	value = strings.TrimSpace(value)
-	if value == "" || strings.EqualFold(value, "unknown") {
+	if value == "" || strings.EqualFold(value, "unknown") || strings.EqualFold(value, "dynamic") {
 		return nil
 	}
 	return []string{value}

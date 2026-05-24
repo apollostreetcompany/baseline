@@ -9,6 +9,8 @@ type Run struct {
 	DurationMS         int64           `json:"duration_ms"`
 	Status             string          `json:"status"`
 	HealthScore        int             `json:"health_score"`
+	QualityScore       int             `json:"quality_score"`
+	SlowScore          int             `json:"slow_score"`
 	Workspace          string          `json:"workspace"`
 	ScopeKey           string          `json:"scope_key"`
 	ConfigHash         string          `json:"config_hash"`

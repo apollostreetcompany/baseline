@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"encoding/json"
 	"os"
 	"regexp"
 	"strconv"
@@ -9,8 +10,10 @@ import (
 )
 
 const baselineSessionMarker = "BASELINE_HERMES_SESSION_ID:"
+const baselineMetadataMarker = "BASELINE_AGENT_METADATA_JSON:"
 
 var baselineSessionLineRE = regexp.MustCompile(`(?m)^\s*BASELINE_HERMES_SESSION_ID:\s*([^\s]+)\s*$`)
+var baselineMetadataLineRE = regexp.MustCompile(`(?m)^\s*BASELINE_AGENT_METADATA_JSON:\s*(\{.*\})\s*$`)
 
 func probeDeadline(sendAt time.Time, timeoutSeconds int) time.Time {
 	if timeoutSeconds <= 0 {
@@ -44,7 +47,9 @@ Baseline harness observability instruction:
 - Answer the user-facing probe normally.
 - If your runtime exposes the current Hermes session id, append exactly one final machine-readable line in this form:
 ` + baselineSessionMarker + ` <session_id>
-- If the session id is unavailable, omit that line. Do not invent one.`
+- If your runtime exposes model/token metadata, append exactly one final machine-readable JSON line prefixed with 'BASELINE_AGENT_METADATA_JSON:' followed by {"model":"...","model_provider":"...","input_tokens":0,"output_tokens":0,"total_tokens":0,"context_tokens":0}.
+- Use OpenTelemetry resource attributes from OTEL_RESOURCE_ATTRIBUTES if your runtime records spans; Baseline sets baseline.run_id, baseline.pack_id, and baseline.probe_id for correlation.
+- If session id or metadata is unavailable, omit that line. Do not invent values.`
 }
 
 func extractBaselineSessionID(output string) (cleanOutput string, sessionID string) {
@@ -58,6 +63,35 @@ func extractBaselineSessionID(output string) (cleanOutput string, sessionID stri
 		cleanOutput += "\n"
 	}
 	return cleanOutput, sessionID
+}
+
+func extractBaselineAgentMetadata(output string, msg *ProbeMessage) string {
+	matches := baselineMetadataLineRE.FindAllStringSubmatch(output, -1)
+	if len(matches) > 0 {
+		var meta struct {
+			Model         string `json:"model"`
+			ModelProvider string `json:"model_provider"`
+			InputTokens   *int   `json:"input_tokens"`
+			OutputTokens  *int   `json:"output_tokens"`
+			TotalTokens   *int   `json:"total_tokens"`
+			ContextTokens *int   `json:"context_tokens"`
+		}
+		if err := json.Unmarshal([]byte(matches[len(matches)-1][1]), &meta); err == nil {
+			msg.Model = meta.Model
+			msg.ModelProvider = meta.ModelProvider
+			msg.InputTokens = meta.InputTokens
+			msg.OutputTokens = meta.OutputTokens
+			msg.TotalTokens = meta.TotalTokens
+			msg.ContextTokens = meta.ContextTokens
+			msg.TokenStatus = "fresh"
+			msg.TokenSource = "agent metadata"
+		}
+	}
+	cleanOutput := strings.TrimSpace(baselineMetadataLineRE.ReplaceAllString(output, ""))
+	if cleanOutput != "" && strings.HasSuffix(output, "\n") {
+		cleanOutput += "\n"
+	}
+	return cleanOutput
 }
 
 func mergeOTELResourceAttributes(attrs map[string]string) string {
