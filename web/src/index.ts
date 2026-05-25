@@ -1269,6 +1269,12 @@ function layout(env: Env, title: string, body: string, structuredData = ""): str
   <title>${escapeHTML(title)}</title>
   <meta name="description" content="Local-first baseline checks and Pro monitoring for coding agents, MCP tools, repo awareness, memory, latency, and style.">
   <meta name="theme-color" content="#071419">
+  <meta name="apple-mobile-web-app-title" content="Baseline">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <meta property="og:title" content="${escapeHTML(title)}">
   <meta property="og:description" content="Keep coding agents inside the lines with known-good checks, redacted run history, and practical drift alerts.">
   <meta property="og:type" content="website">

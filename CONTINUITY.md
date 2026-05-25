@@ -38,6 +38,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 28 makes `https://trackbaseline.com` the canonical production URL, attaches `trackbaseline.com` and `www.trackbaseline.com` as Cloudflare Worker custom domains, keeps the workers.dev fallback route enabled, and sets Worker `APP_URL` to the apex domain.
 - Bead 29 distribution decision: keep the local CLI binary free and easy to install; charge Pro for hosted history, workspace tokens, remote MCP account operations, monitoring, billing lifecycle, and retention. The first public download path is GitHub Releases plus `https://trackbaseline.com/install.sh`, with npm as an auto-downloading wrapper and Homebrew as a later tap.
 - Bead 30 analytics decision: use DataFast for launch funnel tracking with client-side script plus click/scroll goals; keep tokens out of files and use `DATAFAST_TOKEN` only in shell/secret storage for CLI reports.
+- Bead 31 favicon decision: use the existing `baseline-court-robot.png` photo as the source for browser/app icons so the tab icon matches the launch imagery rather than adding a separate logo mark.
 
 ## State
 ### Done
@@ -72,6 +73,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 28: Deployed the Cloudflare Worker to `https://trackbaseline.com` and `https://www.trackbaseline.com`, verified DNS, health, landing, MCP docs/auth challenge, protected-resource metadata, asset, checkout fail-closed, and fallback workers.dev route. Latest Worker deploy version: `0d0924c3-5c8e-4029-9327-369a73588786`.
 - [x] Bead 29: Added the public distribution path (`install.sh`, GitHub Release workflow, npm auto-download wrapper), configured production Stripe/Klaviyo/auth/token secrets, deployed Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`, and published GitHub Release `v0.1.0`.
 - [x] Bead 30: Added DataFast script and launch funnel events, created DataFast install/Pro funnels with the CLI, added `make analytics-report`, and deployed Worker version `fb899682-a797-4201-9842-4dfb72d5cecd`.
+- [x] Bead 31: Added robot photo favicon/app icon assets, wired icon metadata and web manifest, and deployed Worker version `b4f73e11-7540-4e97-8112-7698467b0484`.
 
 ### Now
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
@@ -79,6 +81,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - CI now includes a macOS `verify` workflow for PRs, and local `make mac-build` uses Swift strict concurrency to match GitHub's Swift 6 behavior.
 - Production Pro configuration is active: Stripe Checkout prices are set for Pro `$39/mo` and Team `$129/mo`, Stripe webhook signature verification is configured, Klaviyo lifecycle email is configured, and magic-link/session/workspace-token HMAC secrets are configured.
 - DataFast analytics is live on `trackbaseline.com` with website id `6a0c48aa9a21aee7bf04cf6e`, tracking id `dfid_PYprhfTkwwQKhkzRUhVtO`, install funnel `baseline-install-funnel`, Pro funnel `baseline-pro-funnel`, and CLI reporting through `DATAFAST_TOKEN=... make analytics-report`.
+- `https://trackbaseline.com/favicon.ico`, PNG favicons, Apple touch icon, `icon-192.png`, `icon-512.png`, and `site.webmanifest` now return `HTTP 200`.
 - `/opt/homebrew/bin/baseline` points to `/Users/future/go/bin/baseline`, OpenClaw plugin loads the `baseline` MCP server, daily LaunchAgent `ai.baseline.daily` is installed for 09:00 local time with `WorkingDirectory=/Users/future/.openclaw/workspace`, `BASELINE_WORKSPACE=/Users/future/.openclaw/workspace`, and a PATH that includes `/opt/homebrew/bin`; the Worker is deployed at version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`.
 - Primary path is now `baseline setup`, `baseline run`, `baseline report`, and `baseline accept RUN_ID --confirm "accept RUN_ID"`. `baseline doctor` is read-only preflight; legacy `check`/`bootstrap` remains available for compatibility.
 - First real OpenClaw eval `run_dil295nlwpug` completed with status warning, health 92, 14 Baseline Core probes, and one slow `ops_change` warning at 95026ms. A later scheduled run `run_dil2s3gle45k` did fire but failed preflight from `/` with launchd's stripped PATH; `baseline latest` and `baseline status` now point back to the real eval instead of that preflight-only failure.

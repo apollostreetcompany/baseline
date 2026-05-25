@@ -393,6 +393,39 @@ DATAFAST_PERIOD=last24h make analytics-report
 
 Do not commit or print DataFast tokens. Prefer `DATAFAST_TOKEN` in the shell session, 1Password, Keychain, or CI secret storage.
 
+## 2026-05-25 Robot Favicon
+
+Baseline uses the existing court robot photo as the browser/app icon source. The generated assets live in `web/public/`:
+
+- `favicon.ico`
+- `favicon-16x16.png`
+- `favicon-32x32.png`
+- `apple-touch-icon.png`
+- `icon-192.png`
+- `icon-512.png`
+- `site.webmanifest`
+
+The shared Worker layout links these assets from every HTML page. Local smoke:
+
+```sh
+cd web
+npm run dev -- --port 8787
+curl -fsS http://localhost:8787/ | rg 'rel="icon"|apple-touch-icon|site.webmanifest'
+curl -I http://localhost:8787/favicon.ico
+```
+
+Live smoke after deploy:
+
+```sh
+curl -I https://trackbaseline.com/favicon.ico
+curl -fsS https://trackbaseline.com/ | rg 'rel="icon"|apple-touch-icon|site.webmanifest'
+curl -fsS https://trackbaseline.com/site.webmanifest
+```
+
+Deployment result:
+
+- Worker version `b4f73e11-7540-4e97-8112-7698467b0484` uploaded seven favicon/app-icon assets and serves `/favicon.ico` with `HTTP 200`.
+
 ## 2026-05-19 Landing A Redesign And BrandOS Repair
 
 Bead 27 replaces the homepage with a Worker-native port of `/Users/kikimac/Downloads/baseline.zip` `landing-a.jsx` and reuses the supplied court robot image assets already present under `web/public/assets/`. The deploy intentionally preserves Bead 25 cloud account, token, webhook, history, comparison, and remote MCP routes.
