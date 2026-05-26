@@ -212,6 +212,7 @@ The admin page versions canonical question sets in Neon and can evaluate the lat
 - GitHub Release assets: macOS arm64/x86_64 and Linux arm64/x86_64 tarballs built by `.github/workflows/release.yml`.
 - npm/pnpm wrapper: `package/` publishes `@baseline-ai/cli`, which auto-downloads the matching release binary when no local `baseline` is present.
 - OpenClaw bundle: release artifact `baseline-openclaw-plugin.tgz`, also installable from `openclaw-plugin/` during development.
+- Codex plugin: release artifact `baseline-codex-plugin.tgz`, with local development source in `plugins/baseline/` and a repo-local marketplace at `.agents/plugins/marketplace.json`.
 
 See `docs/PUBLISHING.md` for release and verification steps.
 

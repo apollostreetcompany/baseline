@@ -1,0 +1,43 @@
+{
+  "name": "baseline",
+  "version": "0.1.0",
+  "description": "Local-first coding-agent health checks and drift monitoring for Codex.",
+  "author": {
+    "name": "Apollo Street Company",
+    "url": "https://trackbaseline.com"
+  },
+  "homepage": "https://trackbaseline.com",
+  "repository": "https://github.com/apollostreetcompany/baseline",
+  "license": "MIT",
+  "keywords": [
+    "coding-agents",
+    "drift",
+    "mcp",
+    "local-first",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Baseline",
+    "shortDescription": "Check coding-agent health and drift locally.",
+    "longDescription": "Baseline runs local-first coding-agent health checks, writes reports on your machine, and compares later runs against an operator-approved Good Baseline. Raw prompts and responses stay local unless you explicitly enable redacted sync.",
+    "developerName": "Apollo Street Company",
+    "category": "Productivity",
+    "capabilities": [
+      "MCP",
+      "Local",
+      "Reports",
+      "Monitoring"
+    ],
+    "websiteURL": "https://trackbaseline.com",
+    "privacyPolicyURL": "https://trackbaseline.com/privacy",
+    "termsOfServiceURL": "https://trackbaseline.com/terms",
+    "brandColor": "#1B7F78",
+    "defaultPrompt": [
+      "Set up a Baseline health check.",
+      "Run Baseline and show the report.",
+      "Compare drift against Good Baseline."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

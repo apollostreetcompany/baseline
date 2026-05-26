@@ -1,14 +1,15 @@
 # Publishing Baseline
 
-Baseline has four distribution surfaces: the hosted install script, GitHub
-Release binaries, the npm wrapper, and the OpenClaw plugin bundle. The binary is
-free to install; Pro billing gates cloud history, workspace tokens, remote MCP
-account operations, monitoring, and retention.
+Baseline has five distribution surfaces: the hosted install script, GitHub
+Release binaries, the npm wrapper, the OpenClaw plugin bundle, and the Codex
+plugin bundle. The binary is free to install; Pro billing gates cloud history,
+workspace tokens, remote MCP account operations, monitoring, and retention.
 
 ## GitHub Release Binaries
 
-The release workflow builds macOS and Linux tarballs, checksum files, and the
-OpenClaw plugin tarball whenever a `v*` tag is pushed.
+The release workflow builds macOS and Linux tarballs, checksum files, the
+OpenClaw plugin tarball, and the Codex plugin tarball whenever a `v*` tag is
+pushed.
 
 ```sh
 make verify-all
@@ -25,6 +26,7 @@ Artifacts:
 - `baseline_Linux_arm64.tar.gz`
 - `baseline_Linux_x86_64.tar.gz`
 - `baseline-openclaw-plugin.tgz`
+- `baseline-codex-plugin.tgz`
 - `checksums.txt`
 
 The public install script at `https://trackbaseline.com/install.sh` downloads
@@ -97,6 +99,30 @@ Tarball distribution from the release artifact:
 tar -czf baseline-openclaw-plugin-v0.1.0.tgz -C openclaw-plugin .
 openclaw plugins install ./baseline-openclaw-plugin-v0.1.0.tgz
 ```
+
+## Codex Plugin
+
+The Codex plugin source lives in `plugins/baseline/` and contains:
+
+- `.codex-plugin/plugin.json`
+- `.mcp.json`
+- `skills/baseline-health/SKILL.md`
+
+Local validation:
+
+```sh
+make plugin-validate
+```
+
+Local development install:
+
+```sh
+codex plugin marketplace add .agents/plugins
+```
+
+The plugin requires the `baseline` CLI on `PATH`; install the CLI before first
+MCP use. `scripts/build-release.sh` publishes the plugin source as
+`dist/baseline-codex-plugin.tgz`.
 
 ## Smoke Tests
 

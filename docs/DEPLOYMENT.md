@@ -295,6 +295,7 @@ Release preflight:
 
 ```sh
 make verify-all
+make plugin-validate
 bash scripts/build-release.sh
 ls dist
 ```

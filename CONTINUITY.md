@@ -39,6 +39,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 29 distribution decision: keep the local CLI binary free and easy to install; charge Pro for hosted history, workspace tokens, remote MCP account operations, monitoring, billing lifecycle, and retention. The first public download path is GitHub Releases plus `https://trackbaseline.com/install.sh`, with npm as an auto-downloading wrapper and Homebrew as a later tap.
 - Bead 30 analytics decision: use DataFast for launch funnel tracking with client-side script plus click/scroll goals; keep tokens out of files and use `DATAFAST_TOKEN` only in shell/secret storage for CLI reports.
 - Bead 31 favicon decision: use the existing `baseline-court-robot.png` photo as the source for browser/app icons so the tab icon matches the launch imagery rather than adding a separate logo mark.
+- Bead 32 Codex plugin decision: keep `openclaw-plugin/` as the legacy/OpenClaw compatibility bundle and introduce `plugins/baseline/` as the release-oriented Codex plugin. The v1 plugin is valid for local Codex development when the `baseline` CLI is already on `PATH`; productionization still needs CLI auto-install/preflight, clean-environment Codex smoke tests, plugin assets, and CI-backed schema validation.
 
 ## State
 ### Done
@@ -74,8 +75,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 29: Added the public distribution path (`install.sh`, GitHub Release workflow, npm auto-download wrapper), configured production Stripe/Klaviyo/auth/token secrets, deployed Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`, and published GitHub Release `v0.1.0`.
 - [x] Bead 30: Added DataFast script and launch funnel events, created DataFast install/Pro funnels with the CLI, added `make analytics-report`, and deployed Worker version `fb899682-a797-4201-9842-4dfb72d5cecd`.
 - [x] Bead 31: Added robot photo favicon/app icon assets, wired icon metadata and web manifest, and deployed Worker version `b4f73e11-7540-4e97-8112-7698467b0484`.
+- [x] Bead 32: Added a validated Codex plugin v1 under `plugins/baseline/`, repo-local marketplace metadata, `baseline-codex-plugin.tgz` release packaging, plugin validation target, and productionization roadmap.
 
 ### Now
+- Branch `codex/feat/bead-32-codex-plugin` contains the first Codex plugin v1. `make plugin-validate`, `make test`, `make package-test`, `make web-typecheck`, JSON/path checks, shell syntax checks, and temp `DIST_DIR` release build all pass locally.
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
 - Public install works through `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release `v0.1.0` assets and checksums. The npm wrapper can auto-download the same release, but the npm package is not published yet because this machine is not logged into npm.
 - CI now includes a macOS `verify` workflow for PRs, and local `make mac-build` uses Swift strict concurrency to match GitHub's Swift 6 behavior.
@@ -94,6 +97,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 ### Next
 - End-to-end Pro pilot smoke with a real invited account: checkout, webhook entitlement, magic-link login, workspace token creation, redacted sync, history/hotspot/compare, and remote MCP account status.
 - Publish `@baseline-ai/cli` once npm auth for the `@baseline-ai` scope is available; the package is ready and `npm pack --dry-run` passes.
+- Productionize the Codex plugin: add missing-CLI preflight/auto-install, vendor or officialize plugin schema validation in CI, add icon/logo/screenshots, smoke in a clean Codex install, and publish `baseline-codex-plugin.tgz` with the next release.
 - Create a Homebrew tap for persistent macOS installs after the first pilot users validate the install script.
 - Later sequence: app-level retention enforcement, OpenClaw runner pack, MCP schema drift testing against target clients, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
@@ -126,6 +130,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/docs/DEPLOYMENT.md`
 - `/Users/future/dev/baseline/package`
 - `/Users/future/dev/baseline/openclaw-plugin`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/plugins/baseline`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/.agents/plugins/marketplace.json`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/docs/CODEX_PLUGIN.md`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/scripts/validate-codex-plugin.sh`
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
 - `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
 - `/Users/future/dev/baseline/docs/OPENPROSE_RUN_RESULTS.md`

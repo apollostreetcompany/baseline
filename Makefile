@@ -1,4 +1,4 @@
-.PHONY: build test web-typecheck web-dev mac-build package-test release-build analytics-report verify verify-all
+.PHONY: build test web-typecheck web-dev mac-build package-test plugin-validate release-build analytics-report verify verify-all
 
 build:
 	go build -o bin/baseline ./cmd/baseline
@@ -17,6 +17,9 @@ mac-build:
 
 package-test:
 	cd package && npm test
+
+plugin-validate:
+	bash scripts/validate-codex-plugin.sh
 
 release-build:
 	bash scripts/build-release.sh

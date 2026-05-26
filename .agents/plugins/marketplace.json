@@ -1,0 +1,20 @@
+{
+  "name": "personal",
+  "interface": {
+    "displayName": "Baseline Plugin Preview"
+  },
+  "plugins": [
+    {
+      "name": "baseline",
+      "source": {
+        "source": "local",
+        "path": "./plugins/baseline"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -28,10 +28,11 @@ build_one linux arm64 Linux_arm64
 build_one linux amd64 Linux_x86_64
 
 tar -czf "$DIST_DIR/baseline-openclaw-plugin.tgz" -C "$ROOT_DIR/openclaw-plugin" .
+tar -czf "$DIST_DIR/baseline-codex-plugin.tgz" -C "$ROOT_DIR/plugins/baseline" .
 
 (
   cd "$DIST_DIR"
-  shasum -a 256 baseline_*.tar.gz baseline-openclaw-plugin.tgz > checksums.txt
+  shasum -a 256 baseline_*.tar.gz baseline-openclaw-plugin.tgz baseline-codex-plugin.tgz > checksums.txt
 )
 
 echo "release artifacts written to $DIST_DIR"
