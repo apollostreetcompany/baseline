@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const Version = "0.1.0"
+
 func Main(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printHelp(stdout)
@@ -22,6 +24,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	switch args[0] {
+	case "version", "--version", "-v":
+		fmt.Fprintf(stdout, "baseline %s\n", Version)
+		return 0
 	case "init":
 		return cmdInit(args[1:], stdout, stderr)
 	case "setup":
@@ -82,6 +87,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprint(w, `Baseline v0
 
 Usage:
+  baseline --version
+  baseline version
   baseline setup [--json]
   baseline run [--json]
   baseline report [RUN_ID]

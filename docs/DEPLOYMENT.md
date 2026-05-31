@@ -534,3 +534,72 @@ Smoke result:
 - Score: `90`
 - Status: `warning`
 - Cloud synced: `true`
+
+## 2026-06-01 Bead 33 SEO and Lead Magnet Deploy
+
+Bead 33 deploys the market-acquisition surface:
+
+- `/blog` is now a content index, not a stub.
+- Eight guide routes are live under `/guides/...`.
+- Five lead-magnet routes are live under `/resources/...`.
+- Lead-magnet requests post to `/api/events`, emit Klaviyo lead/master events when lifecycle email is configured, and are queryable through protected `/api/admin/leads`.
+- `/dashboard`, `/admin`, and checkout return pages remain `noindex,follow` and are omitted from `/sitemap.xml`.
+
+Preflight:
+
+```sh
+make verify
+make plugin-validate
+go run ./cmd/baseline --version
+go run ./cmd/baseline version
+cd web && npm run typecheck
+```
+
+Local route smoke:
+
+```sh
+cd web
+npm run dev -- --port 8787
+curl -fsS http://localhost:8787/blog | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard|Guides and resources"
+curl -fsS http://localhost:8787/resources/agent-drift-scorecard | rg -n "Request pilot prompt|lead_magnet_request|canonical|CreativeWork"
+curl -fsS http://localhost:8787/sitemap.xml | rg -n "/guides/|/resources/"
+curl -fsS -X POST http://localhost:8787/api/events -H 'content-type: application/json' --data '{"type":"lead_magnet_request","path":"/resources/agent-drift-scorecard","resource":"/resources/agent-drift-scorecard","email":"test@example.com","context":"codex mcp drift"}'
+```
+
+Deploy:
+
+```sh
+cd web
+set -a; source /path/to/deploy.env; set +a
+wrangler deploy
+```
+
+The first deploy attempt with unsourced Wrangler/OAuth auth failed with Cloudflare API `Authentication error [code: 10000]` because the token did not match `web/wrangler.jsonc` account `3a0bfe287d4dfb27f802ee5d7e4b21e1`. Retrying with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` sourced from the operator env succeeded.
+
+Live deploy:
+
+- Worker version: `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`
+- URLs: `https://trackbaseline.com`, `https://www.trackbaseline.com`, `https://baseline-ai.ryan-borker.workers.dev`
+
+Live smoke:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/blog | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard|Guides and resources"
+curl -fsS https://trackbaseline.com/resources/agent-drift-scorecard | rg -n "Request pilot prompt|lead_magnet_request|canonical|CreativeWork"
+curl -fsS https://trackbaseline.com/sitemap.xml | rg -n "/guides/|/resources/"
+curl -fsS -X POST https://trackbaseline.com/api/events -H 'content-type: application/json' --data '{"type":"lead_magnet_request","path":"/resources/agent-drift-scorecard","resource":"/resources/agent-drift-scorecard","email":"smoke+bead33@trackbaseline.com","context":"deploy smoke"}'
+curl -sS -i https://trackbaseline.com/api/admin/leads | sed -n '1,8p'
+```
+
+Results:
+
+- Health returned `db:true`, `stripe:true`, `token_required:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Blog index, resource page, canonical URL, CreativeWork JSON-LD, and lead-magnet request CTA served live.
+- Sitemap included `/guides/...` and `/resources/...` and omitted `/dashboard`, `/admin`, and checkout return pages.
+- Synthetic lead POST returned `{"ok":true}`.
+- Unauthenticated `/api/admin/leads` returned `401`, confirming the lead queue is protected.
+
+Rollback:
+
+- Preferred rollback: `cd web && wrangler rollback b4f73e11-7540-4e97-8112-7698467b0484` to return to the immediately previous pre-Bead-33 Worker version listed by `wrangler deployments list --name baseline-ai`.

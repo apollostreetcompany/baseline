@@ -8,7 +8,7 @@ Live launch surface:
 - Dashboard: https://trackbaseline.com/dashboard
 - Admin: https://trackbaseline.com/admin
 - MCP docs: https://trackbaseline.com/docs/mcp
-- Blog stub: https://trackbaseline.com/blog
+- Content index: https://trackbaseline.com/blog
 - Remote MCP: https://trackbaseline.com/mcp
 - Latest run API: https://trackbaseline.com/api/runs/latest
 - Timeline API: https://trackbaseline.com/api/runs/timeline
@@ -17,8 +17,12 @@ Live launch surface:
 
 ```sh
 curl -fsSL https://trackbaseline.com/install.sh | sh
+baseline --version
+baseline doctor
 baseline setup
 ```
+
+`baseline --version` should print `baseline 0.1.0`. `baseline doctor` is the safe read-only smoke check; it verifies local runtime/repo/MCP/config state without sending agent probe messages. `baseline setup` is the first command that writes Baseline-owned local state and starts the default target eval.
 
 Local source build:
 
@@ -31,12 +35,16 @@ go build -o bin/baseline ./cmd/baseline
 Run these commands for a local-only OpenClaw setup, first Good Baseline, and drift comparison:
 
 ```sh
+baseline --version
+baseline doctor
 baseline setup
 baseline report
-baseline rerun <FAILED_RUN_ID>
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
+baseline run
 baseline compare
 ```
+
+Use `baseline rerun <FAILED_RUN_ID>` only after reviewing a failed lifecycle report and stdout/stderr paths.
 
 `baseline setup` writes `~/.baseline/config.json`, `~/.baseline/BOOTSTRAP.md`, the local database/redaction files, ensures OpenClaw Codex app-server request/turn-idle timeouts are at least 900 seconds, then runs the real default target eval. It prints the report and response artifact paths so the operator can review before accepting. Use `baseline doctor` for read-only preflight when you do not want to send agent probe messages.
 
@@ -171,9 +179,13 @@ The MCP server exposes seven tools:
 Manual MCP smoke test:
 
 ```sh
+baseline --version
+baseline doctor
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./bin/baseline serve mcp
-printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_schedule","arguments":{"action":"run"}}}' | ./bin/baseline serve mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"baseline_doctor","arguments":{}}}' | ./bin/baseline serve mcp
 ```
+
+If the MCP smoke fails because `baseline` is missing, install the CLI with `curl -fsSL https://trackbaseline.com/install.sh | sh` or point the client at the built binary. Do not add a version or preflight MCP tool; the local MCP server intentionally advertises exactly seven tools.
 
 MCP errors return structured recovery hints and `next_actions`. `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return a `run_status` with a `run_id`; agents should poll `baseline_report` with that run id until it returns the completed report/responses. Only call `baseline_accept` after showing the operator the markdown report plus local responses and receiving explicit confirmation.
 

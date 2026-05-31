@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-32-codex-plugin`.
+- Working branch: `codex/feat/bead-33-seo-lead-magnets`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -14,6 +14,7 @@
   - Bead 30: DataFast launch funnel analytics. Implementation commit `6474606e7ed151be888fd924abd6c8f5c3cbe9f2`; Worker deploy `fb899682-a797-4201-9842-4dfb72d5cecd`; DataFast funnels created with CLI.
   - Bead 31: Robot photo favicon/app icons. Worker deploy `b4f73e11-7540-4e97-8112-7698467b0484`; live `/favicon.ico` now returns `200`.
   - Bead 32: Codex plugin readiness/build. `plugins/baseline/` is the v1 Codex plugin, `openclaw-plugin/` remains the legacy/OpenClaw compatibility bundle, and `baseline-codex-plugin.tgz` is now part of release packaging.
+  - Bead 33: market-effectiveness pass for first organic customer path. Added eight guide routes, five lead resources, lead request capture/admin queue/Klaviyo events, dashboard/admin clarity, CLI `--version`, docs/package first-run guidance, and Worker deploy `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
@@ -23,6 +24,8 @@
 - DataFast website id is `6a0c48aa9a21aee7bf04cf6e`; tracking id is `dfid_PYprhfTkwwQKhkzRUhVtO`; CLI-created funnels are `baseline-install-funnel` and `baseline-pro-funnel`.
 - Favicon source is `web/public/assets/baseline-court-robot.png`; generated icon assets live at the root of `web/public/`.
 - Codex plugin v1 source is `plugins/baseline/`, with repo-local marketplace metadata at `.agents/plugins/marketplace.json`. It assumes the `baseline` CLI is installed and available on `PATH`.
+- Bead 33 public acquisition routes live under `/blog`, `/guides/...`, and `/resources/...`; `/dashboard`, `/admin`, and checkout return pages remain `noindex,follow` and are omitted from `/sitemap.xml`.
+- Lead-magnet requests post to `/api/events`, emit Klaviyo customer/master events when lifecycle email is configured, and are listed through protected `/api/admin/leads`.
 - Existing checkout route supports Stripe payment links or direct Stripe Checkout sessions.
 - Existing admin/evaluator endpoints use `BASELINE_ADMIN_TOKEN`, Neon, and optional OpenAI evaluator.
 - Bibe Code reference patterns inspected:
@@ -43,7 +46,8 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 32 Codex plugin v1 is implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
+- Bead 33 is implemented, reviewed, deployed, and awaiting final commit/push closeout in this worktree.
+- Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
 
 ## Commands To Re-run
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
@@ -55,6 +59,8 @@
 - `cd web && npm audit --audit-level=high`
 - `bash scripts/build-release.sh`
 - `make plugin-validate`
+- `go run ./cmd/baseline --version`
+- `go run ./cmd/baseline version`
 - `bash scripts/validate-codex-plugin.sh openclaw-plugin || true`
 - `npm --prefix package pack --dry-run`
 - `DATAFAST_TOKEN=... make analytics-report`
@@ -82,6 +88,9 @@
 - Bead 30 validation: DataFast CLI docs checked; `npx @datafast/cli websites list` confirmed `trackbaseline.com`; `funnels create` created install and Pro funnels; `DATAFAST_PERIOD=last24h bash scripts/datafast-funnel-report.sh` returned overview/goals/pages/referrers/funnels; `npm run typecheck`, `bash -n scripts/datafast-funnel-report.sh`, `make verify-all`, `npm --prefix web audit --audit-level=high`, `git diff --check`, local Worker script/goal smoke, Wrangler deploy, and live script/goal/health smokes passed.
 - Bead 31 validation: `npm run typecheck`, manifest JSON parse, `sips` dimension checks, local Worker favicon metadata and all icon asset smokes, `make verify-all`, `npm --prefix web audit --audit-level=high`, `git diff --check`, Wrangler deploy, live `/favicon.ico`, PNG icon, Apple touch icon, manifest, homepage metadata, and health smokes passed.
 - Bead 32 validation: `make plugin-validate` passed for `plugins/baseline`; the same validator intentionally fails `openclaw-plugin` on legacy `mcp`/`publisher` fields, missing `author`, missing `interface`, and skill frontmatter. `make test`, `make package-test`, `make web-typecheck`, JSON syntax checks, referenced-path checks, shell syntax checks, `git diff --check`, and a temp `DIST_DIR` release build all passed. The temp release build produced `baseline-codex-plugin.tgz` containing `.codex-plugin/plugin.json`, `.mcp.json`, `README.md`, `assets/`, and `skills/baseline-health/SKILL.md`.
+- Bead 33 validation: `make verify`, `make plugin-validate`, `go run ./cmd/baseline --version`, `go run ./cmd/baseline version`, local `/blog`, `/resources/agent-drift-scorecard`, `/sitemap.xml`, `/api/events`, `/admin`, and `/api/admin/leads` smokes all passed. Playwright screenshots are stored at `handoff/bead-33-blog.png`, `handoff/bead-33-dashboard.png`, `handoff/bead-33-lead-resource-final.png`, and `handoff/bead-33-admin-final.png`.
+- Bead 33 review: fresh skill-specific RepoPrompt subagents researched X/reddit/SEO/AEO/lead magnets/MCP/native MCP/app acquisition/UI/operationalization. `subreview --uncommitted` completed partially: Claude completed and found real lead-loop blockers; Codex wrapper failed on CLI args and Gemini quota was exhausted. Acted on Claude findings by wiring lead requests to Klaviyo events, adding protected `/api/admin/leads`, adding admin "Recent leads", normalizing emails/honeypot, and softening overpromising copy. Proconsult was attempted twice and failed at browser attachment upload timeout.
+- Bead 33 deploy: `npm run deploy` and unsourced global `wrangler deploy` failed with Cloudflare `Authentication error [code: 10000]` because the OAuth token did not match `web/wrangler.jsonc` account. Sourcing the operator Cloudflare env from `/Users/kikimac/.hermes/.env` without printing values and running `wrangler deploy` succeeded. Live Worker version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8` passed health, blog/resource/sitemap, synthetic lead POST, and protected admin-leads auth smokes.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.
@@ -91,3 +100,4 @@
 - `npm audit --audit-level=high` passes, but Wrangler/Miniflare currently pulls three moderate `ws` advisories; `npm audit fix --force` would downgrade Wrangler and is not applied.
 - The skills-library repo has many unrelated pre-existing dirty changes on branch `codex/skill-audit-apply-downloads`; stage only BrandOS-specific files if committing that repair separately.
 - Codex plugin v1 is valid but not fully productionized until it can handle missing/stale CLI binaries, pass clean-environment Codex installation smokes, ship production plugin assets, and validate through CI without relying on a local Codex skill path.
+- Bead 33 content is intentionally broad enough for launch (8 guides, 5 resources), but the next SEO quality pass should deepen the 2-3 highest-intent pages with examples, screenshots, and stronger differentiated proof before scaling more programmatic pages.

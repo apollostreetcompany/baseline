@@ -14,26 +14,31 @@ Baseline.
 - The `baseline` CLI must be installed and available on `PATH`.
 - Install the CLI with `curl -fsSL https://trackbaseline.com/install.sh | sh`
   or from the GitHub Release assets before calling MCP tools.
+- Verify `baseline --version` prints `baseline 0.1.0`, then run
+  `baseline doctor` for read-only preflight before starting an eval.
 - Baseline is local-first. Raw prompts, responses, local paths, and secrets
   must not be copied into cloud systems unless the operator explicitly enables
   redacted sync.
 
 ## Workflow
 
-1. Start with `baseline_setup` or CLI `baseline setup`. This configures the
-   local workspace and starts the default target eval in the background when
-   needed.
-2. For later checks, call `baseline_run`. It returns quickly with
+1. Start with `baseline --version` and `baseline doctor` if the CLI has not
+   been verified in this environment. `baseline doctor` is read-only and does
+   not send probe messages.
+2. Start the first run with `baseline_setup` or CLI `baseline setup`. This
+   configures the local workspace, writes Baseline-owned local state, and starts
+   the default target eval in the background when needed.
+3. For later checks, call `baseline_run`. It returns quickly with
    `run_status.run_id` while the eval continues.
-3. Poll `baseline_report` with that run id until the report is completed.
-4. Show the operator the report and responses before asking for an
+4. Poll `baseline_report` with that run id until the report is completed.
+5. Show the operator the report and responses before asking for an
    accept/reject/defer decision.
-5. Accept a Good Baseline only after explicit operator approval:
+6. Accept a Good Baseline only after explicit operator approval:
    `baseline_accept` with `confirm: "accept <RUN_ID>"`, or CLI
    `baseline accept <RUN_ID> --confirm "accept <RUN_ID>"`.
-6. Use `baseline_doctor` only for read-only preflight. It must not send agent
+7. Use `baseline_doctor` only for read-only preflight. It must not send agent
    probes or create a Good Baseline candidate.
-7. Use `baseline_scrub_preview` before enabling sync or sharing any text
+8. Use `baseline_scrub_preview` before enabling sync or sharing any text
    externally.
 
 ## Daily Self-Check
@@ -47,6 +52,9 @@ Baseline.
 
 ## Recovery
 
+- If MCP startup fails because `baseline` is missing, install the CLI or point
+  Codex at a built binary, then re-run `baseline --version`. Do not add a new
+  MCP tool for version or preflight; the advertised local tool count stays seven.
 - If a lifecycle run is still running, keep polling `baseline_report`.
 - If a lifecycle run failed before writing a result row, inspect the stdout and
   stderr paths in the report, then ask before rerunning with `baseline_run`

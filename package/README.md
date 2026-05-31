@@ -11,8 +11,12 @@ from GitHub Releases, verifies `checksums.txt`, caches it under
 
 ```sh
 pnpm add -g @baseline-ai/cli
+baseline --version
+baseline doctor
 baseline setup
 ```
+
+`baseline --version` should print `baseline 0.1.0`. `baseline doctor` is read-only preflight; `baseline setup` writes local Baseline state and starts the first configured target eval.
 
 Direct install without npm:
 
@@ -25,9 +29,12 @@ curl -fsSL https://trackbaseline.com/install.sh | sh
 Run exactly:
 
 ```sh
+baseline --version
+baseline doctor
 baseline setup
 baseline report
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
+baseline run
 baseline compare
 ```
 
@@ -56,4 +63,4 @@ baseline config set api_token <token>
 baseline schedule install --at 09:00
 ```
 
-`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. Legacy `baseline check --fast|--full` remains for scripted compatibility. If OpenClaw logs show `turn_completion_idle_timeout` around 60 seconds, rerun `baseline setup` or `baseline install openclaw`; if logs show `__OPENCLAW_REDACTED__` with `401 Unauthorized`, treat it as child env/auth configuration rather than a timeout. `baseline report RUN_ID --json` exits `0` for completed, `2` while running, and `1` for failed lifecycle runs; use `baseline rerun RUN_ID` only after reviewing the logged failure.
+`baseline run` captures Baseline send/receive timestamps, stores local `RESPONSES.md`, and uses OpenClaw session metadata for tokens when available. The wrapper forwards `baseline --version`, `baseline doctor`, and `baseline serve mcp` to the same Go binary; if no binary is present it downloads the release before running. Legacy `baseline check --fast|--full` remains for scripted compatibility. If OpenClaw logs show `turn_completion_idle_timeout` around 60 seconds, rerun `baseline setup` or `baseline install openclaw`; if logs show `__OPENCLAW_REDACTED__` with `401 Unauthorized`, treat it as child env/auth configuration rather than a timeout. `baseline report RUN_ID --json` exits `0` for completed, `2` while running, and `1` for failed lifecycle runs; use `baseline rerun RUN_ID` only after reviewing the logged failure.

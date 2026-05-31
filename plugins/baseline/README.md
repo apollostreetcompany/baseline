@@ -10,8 +10,11 @@ Install the Baseline CLI first:
 
 ```sh
 curl -fsSL https://trackbaseline.com/install.sh | sh
+baseline --version
 baseline doctor
 ```
+
+`baseline --version` should print `baseline 0.1.0`. `baseline doctor` is a read-only preflight smoke; it does not send agent probes. Use `baseline setup` only when the operator is ready to write local Baseline state and start the first configured target eval.
 
 Then add the repo-local marketplace from the repository root:
 
@@ -30,7 +33,9 @@ The plugin expects this command to be on `PATH`:
 baseline serve mcp
 ```
 
-The MCP surface advertises:
+If Codex cannot start the MCP server, first run `baseline --version` in the same environment. If the command is missing, install the CLI with the public install script or point Codex at a built binary; do not add extra MCP tools for version/preflight.
+
+The MCP surface advertises exactly seven tools:
 
 - `baseline_setup`
 - `baseline_run`

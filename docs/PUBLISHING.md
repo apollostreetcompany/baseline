@@ -30,8 +30,8 @@ Artifacts:
 - `checksums.txt`
 
 The public install script at `https://trackbaseline.com/install.sh` downloads
-from GitHub Releases, verifies the checksum entry, and installs to
-`~/.local/bin` by default:
+from GitHub Releases, verifies the checksum entry, installs to
+`~/.local/bin` by default, and smoke-probes `baseline --version`:
 
 ```sh
 curl -fsSL https://trackbaseline.com/install.sh | sh
@@ -67,7 +67,8 @@ pnpm --dir package publish --access public
 ```
 
 Set `BASELINE_VERSION=v0.1.0` when testing the wrapper against a specific
-release instead of `latest`.
+release instead of `latest`. After install, `baseline --version` should print
+`baseline 0.1.0`.
 
 ## OpenClaw Plugin
 
@@ -121,7 +122,9 @@ codex plugin marketplace add .agents/plugins
 ```
 
 The plugin requires the `baseline` CLI on `PATH`; install the CLI before first
-MCP use. `scripts/build-release.sh` publishes the plugin source as
+MCP use, verify `baseline --version`, then run `baseline doctor` for read-only
+preflight. Missing CLI recovery is the install script or release binary path,
+not an extra MCP tool. `scripts/build-release.sh` publishes the plugin source as
 `dist/baseline-codex-plugin.tgz`.
 
 ## Smoke Tests
@@ -129,17 +132,23 @@ MCP use. `scripts/build-release.sh` publishes the plugin source as
 After installing any distribution, verify the same local command surface:
 
 ```sh
-baseline setup
+baseline --version
 baseline doctor
+baseline setup
 baseline report
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
+baseline run
 baseline compare
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | baseline serve mcp
 ```
 
-The MCP response should include `baseline_setup`, `baseline_run`,
-`baseline_doctor`, `baseline_report`, `baseline_accept`, `baseline_schedule`,
-and `baseline_scrub_preview`.
+`baseline doctor` is read-only and does not send agent probes. `baseline setup`
+and `baseline run` do send real probe messages to the configured target and
+write local report artifacts.
+
+The MCP response should include exactly seven advertised tools:
+`baseline_setup`, `baseline_run`, `baseline_doctor`, `baseline_report`,
+`baseline_accept`, `baseline_schedule`, and `baseline_scrub_preview`.
 
 For an OpenClaw runner smoke, use the normal eval path:
 

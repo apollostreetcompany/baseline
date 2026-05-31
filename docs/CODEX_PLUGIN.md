@@ -35,6 +35,29 @@ The v1 Codex plugin now lives at `plugins/baseline/` and includes:
 This is a valid local/development Codex plugin, assuming the Baseline CLI is
 already installed and on `PATH`.
 
+## Current First-Run Contract
+
+Before installing or smoking the plugin, install the CLI and verify it without
+starting a run:
+
+```sh
+curl -fsSL https://trackbaseline.com/install.sh | sh
+baseline --version
+baseline doctor
+```
+
+`baseline --version` should print `baseline 0.1.0`. `baseline doctor` is
+read-only preflight and must not send agent probes. The first command that
+writes Baseline local state and starts the configured target eval is
+`baseline setup`; later drift checks use `baseline run`.
+
+The plugin MCP server command is still `baseline serve mcp`. A healthy
+`tools/list` response advertises exactly seven tools: `baseline_setup`,
+`baseline_run`, `baseline_doctor`, `baseline_report`, `baseline_accept`,
+`baseline_schedule`, and `baseline_scrub_preview`. If the CLI is missing or
+stale, recover by installing the CLI or pointing Codex at a built binary; do not
+add an MCP version/preflight tool.
+
 ## Productionization Gaps
 
 The v1 plugin is not yet a fully productionized public plugin because the plugin
