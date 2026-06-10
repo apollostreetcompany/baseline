@@ -14,10 +14,12 @@
   - Bead 30: DataFast launch funnel analytics. Implementation commit `6474606e7ed151be888fd924abd6c8f5c3cbe9f2`; Worker deploy `fb899682-a797-4201-9842-4dfb72d5cecd`; DataFast funnels created with CLI.
   - Bead 31: Robot photo favicon/app icons. Worker deploy `b4f73e11-7540-4e97-8112-7698467b0484`; live `/favicon.ico` now returns `200`.
   - Bead 32: Codex plugin readiness/build. `plugins/baseline/` is the v1 Codex plugin, `openclaw-plugin/` remains the legacy/OpenClaw compatibility bundle, and `baseline-codex-plugin.tgz` is now part of release packaging.
+  - Bead 34: Public website clarity pass from partial `subreview` notes. Branch `codex/feat/bead-34-website-clarity` rewrites the homepage value prop, replaces the blog stub with real field notes, adds copyable install/docs command blocks, labels sample dashboard data, and fixes metadata/robots/sitemap.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
 - Canonical production URL is now `https://trackbaseline.com`.
+- Website clarity source of truth is currently `web/src/index.ts`; no backend route/auth/schema/billing logic changed in Bead 34.
 - Public install command is now `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release assets and checksum verification.
 - Production Pro secrets are active: Stripe Checkout, Stripe webhook verification, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. Do not print secret values.
 - DataFast website id is `6a0c48aa9a21aee7bf04cf6e`; tracking id is `dfid_PYprhfTkwwQKhkzRUhVtO`; CLI-created funnels are `baseline-install-funnel` and `baseline-pro-funnel`.
@@ -82,6 +84,8 @@
 - Bead 30 validation: DataFast CLI docs checked; `npx @datafast/cli websites list` confirmed `trackbaseline.com`; `funnels create` created install and Pro funnels; `DATAFAST_PERIOD=last24h bash scripts/datafast-funnel-report.sh` returned overview/goals/pages/referrers/funnels; `npm run typecheck`, `bash -n scripts/datafast-funnel-report.sh`, `make verify-all`, `npm --prefix web audit --audit-level=high`, `git diff --check`, local Worker script/goal smoke, Wrangler deploy, and live script/goal/health smokes passed.
 - Bead 31 validation: `npm run typecheck`, manifest JSON parse, `sips` dimension checks, local Worker favicon metadata and all icon asset smokes, `make verify-all`, `npm --prefix web audit --audit-level=high`, `git diff --check`, Wrangler deploy, live `/favicon.ico`, PNG icon, Apple touch icon, manifest, homepage metadata, and health smokes passed.
 - Bead 32 validation: `make plugin-validate` passed for `plugins/baseline`; the same validator intentionally fails `openclaw-plugin` on legacy `mcp`/`publisher` fields, missing `author`, missing `interface`, and skill frontmatter. `make test`, `make package-test`, `make web-typecheck`, JSON syntax checks, referenced-path checks, shell syntax checks, `git diff --check`, and a temp `DIST_DIR` release build all passed. The temp release build produced `baseline-codex-plugin.tgz` containing `.codex-plugin/plugin.json`, `.mcp.json`, `README.md`, `assets/`, and `skills/baseline-health/SKILL.md`.
+- Bead 34 validation: `subreview` completed partially with Claude output and concrete implementation notes; Codex failed on wrapper args and Gemini failed with quota exhaustion. Implemented traced items only. `make verify`, `git diff --check`, local Worker smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, and `/sitemap.xml`, Playwright desktop/mobile overflow checks, and copy-button feedback checks all passed.
+- Bead 34 screenshots: `/tmp/baseline-website-clarity-desktop.png`, `/tmp/baseline-website-clarity-mobile.png`, `/tmp/baseline-website-clarity-docs-mobile.png`, `/tmp/baseline-website-clarity-blog-desktop.png`, `/tmp/baseline-website-clarity-dashboard-mobile.png`.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.

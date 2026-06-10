@@ -40,6 +40,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 30 analytics decision: use DataFast for launch funnel tracking with client-side script plus click/scroll goals; keep tokens out of files and use `DATAFAST_TOKEN` only in shell/secret storage for CLI reports.
 - Bead 31 favicon decision: use the existing `baseline-court-robot.png` photo as the source for browser/app icons so the tab icon matches the launch imagery rather than adding a separate logo mark.
 - Bead 32 Codex plugin decision: keep `openclaw-plugin/` as the legacy/OpenClaw compatibility bundle and introduce `plugins/baseline/` as the release-oriented Codex plugin. The v1 plugin is valid for local Codex development when the `baseline` CLI is already on `PATH`; productionization still needs CLI auto-install/preflight, clean-environment Codex smoke tests, plugin assets, and CI-backed schema validation.
+- Bead 34 website clarity decision: treat the public site as a conversion and onboarding surface first, not an internal status artifact. The landing page must plainly say Baseline is a local CLI/MCP checker, show the `setup -> run -> accept -> compare` loop, label sample data, and avoid production placeholder copy.
 
 ## State
 ### Done
@@ -76,8 +77,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 30: Added DataFast script and launch funnel events, created DataFast install/Pro funnels with the CLI, added `make analytics-report`, and deployed Worker version `fb899682-a797-4201-9842-4dfb72d5cecd`.
 - [x] Bead 31: Added robot photo favicon/app icon assets, wired icon metadata and web manifest, and deployed Worker version `b4f73e11-7540-4e97-8112-7698467b0484`.
 - [x] Bead 32: Added a validated Codex plugin v1 under `plugins/baseline/`, repo-local marketplace metadata, `baseline-codex-plugin.tgz` release packaging, plugin validation target, and productionization roadmap.
+- [x] Bead 34: Expanded the public website clarity and conversion surface from partial `subreview` notes: concrete hero value prop, copyable install flow, real field notes, sample-data labeling, per-page metadata/schema, robots/sitemap cleanup, and responsive local QA screenshots.
 
 ### Now
+- Branch `codex/feat/bead-34-website-clarity` contains the website clarity pass. `make verify`, `git diff --check`, local Worker route smokes, Playwright desktop/mobile overflow checks, and copy-button feedback checks pass locally. No backend routes, auth, schema, billing, or deployment config changed.
 - Branch `codex/feat/bead-32-codex-plugin` contains the first Codex plugin v1. `make plugin-validate`, `make test`, `make package-test`, `make web-typecheck`, JSON/path checks, shell syntax checks, and temp `DIST_DIR` release build all pass locally.
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
 - Public install works through `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release `v0.1.0` assets and checksums. The npm wrapper can auto-download the same release, but the npm package is not published yet because this machine is not logged into npm.
@@ -131,6 +134,8 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/package`
 - `/Users/future/dev/baseline/openclaw-plugin`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/plugins/baseline`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/web/src/index.ts`
+- `/Users/kikimac/.subreview/runs/baseline-db607dea/2026-06-10T02-11-27-566Z/`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/.agents/plugins/marketplace.json`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/docs/CODEX_PLUGIN.md`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/scripts/validate-codex-plugin.sh`
