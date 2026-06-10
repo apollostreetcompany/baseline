@@ -539,7 +539,7 @@ function demoRun(): Record<string, unknown> {
     agent_kind: "openclaw",
     status: "warning",
     health_score: 82,
-    duration_ms: 13400,
+    duration_ms: 8200,
     mode: "fast",
     redaction_status: "clean",
     warning_count: 2,
@@ -1031,7 +1031,7 @@ function landingPage(env: Env): string {
           <div>
             <p class="eyebrow">Local CLI + MCP drift checks</p>
             <h1>Know when your coding agent quietly changed.</h1>
-            <p class="bodyText heroLede">Baseline probes OpenClaw, Codex, Hermes, Claude Code, or any approved local runner and compares each run to a known-good baseline, so you catch model, tool, memory, repo, and latency drift before it burns a work session.</p>
+            <p class="bodyText heroLede">Baseline probes OpenClaw, Codex, Hermes, or any approved local runner and compares each run to a known-good baseline, so you catch model, tool, memory, repo, and latency drift before it burns a work session.</p>
             <div class="fieldActions">
               <a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="hero">install the cli &rarr;</a>
               <a class="btn btnGhost" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="hero">see a sample run</a>
@@ -1039,7 +1039,7 @@ function landingPage(env: Env): string {
           </div>
           <div class="terminalSample">
             <p class="eyebrow">Copy and run</p>
-            ${copyCommandBlock(`curl -fsSL https://trackbaseline.com/install.sh | sh
+            ${copyCommandBlock(`curl -fsSL ${baseURL(env)}/install.sh | sh
 baseline setup
 baseline run --mode fast
 baseline report RUN_ID
@@ -1063,7 +1063,7 @@ baseline compare`, "First local baseline")}
 
       <section class="statRibbon" aria-label="Baseline metrics">
         <div><strong>14</strong><span>Probes in the default set</span></div>
-        <div><strong>~8s</strong><span>P50 local run</span></div>
+        <div><strong>~8s</strong><span>Example fast run</span></div>
         <div><strong>0 raw</strong><span>Cloud export: prompts / outputs / paths</span></div>
         <div><strong>7 mcp</strong><span>Setup, run, doctor, report, accept, schedule, scrub</span></div>
       </section>
@@ -1130,8 +1130,8 @@ baseline compare`, "First local baseline")}
         </div>
         <div class="priceTable">
           ${priceColumn("Local", "$0", "", "First workstation", ["CLI and MCP runner.", "Local SQLite history and report artifacts.", "Good Baseline review, accept, and compare."], "install", "/docs/mcp", false)}
-          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 private workspaces.", "Redacted run history and magic-link account access.", "Lifecycle email, retention, and private probes."], "buy pro", "/api/checkout?plan=pro", true)}
-          ${priceColumn("Team", "$129", "/mo", "When alerts need to route", ["Up to 10 shared workspaces.", "Account-scoped tokens and support handoffs.", "Audit exports and routed drift alerts."], "buy team", "/api/checkout?plan=team", true)}
+          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 private workspaces.", "Redacted run history and magic-link account access.", "30-day retained history and workspace-token sync."], "buy pro", "/api/checkout?plan=pro", true)}
+          ${priceColumn("Team", "$129", "/mo", "When reviews need to route", ["Up to 10 shared workspaces.", "Owner-managed invites and workspace tokens.", "Team-visible history for handoffs and weekly review."], "buy team", "/api/checkout?plan=team", true)}
         </div>
         ${pilotRequestPanel()}
       </section>
@@ -1156,7 +1156,7 @@ baseline compare`, "First local baseline")}
         <div>
           <p class="bodyText">Copy the installer, run a fast baseline, and only accept the run after you read the report. That is enough to catch the next quiet drift.</p>
           <div class="fieldActions">
-            <button class="btn paperBtn" type="button" data-copy-value="curl -fsSL https://trackbaseline.com/install.sh | sh" data-fast-goal="install_click" data-fast-goal-location="final_cta">copy install command</button>
+            <button class="btn paperBtn" type="button" data-copy-value="curl -fsSL ${escapeHTML(baseURL(env))}/install.sh | sh" data-fast-goal="install_click" data-fast-goal-location="final_cta">copy install command</button>
             <a class="btn outlinePaperBtn" href="/#pricing" data-fast-goal="pricing_click" data-fast-goal-location="final_cta">see pricing</a>
           </div>
         </div>
@@ -1210,7 +1210,7 @@ function agentScoreboard(): string {
   ];
   return `<div class="agentGrid">${agents.map((agent) => `
     <article class="agentCard">
-      <header><strong>${agent.name}</strong><code>sample . ${agent.workspace}</code></header>
+      <header><strong>${agent.name}</strong><code>${agent.workspace}</code></header>
       <div class="agentBody">
         <div>
           <p class="agentScore">${agent.score}<span>/100</span></p>
@@ -1310,9 +1310,9 @@ function copyCommandBlock(command: string, label: string): string {
 function pilotRequestPanel(): string {
   return `<section class="leadCapture pilotCapture" id="pilot-request">
     <div>
-      <p class="eyebrow">Paid pilot</p>
+      <p class="eyebrow">7-day pilot</p>
       <h2>Want the first run watched with you?</h2>
-      <p>Request a 7-day Baseline pilot. The operator path is simple: invite, magic link, workspace token, redacted sync, then one reviewed Good Baseline.</p>
+      <p>Request a 7-day setup pilot before paying. We will reply by email, confirm Pro ($39/mo) or Team ($129/mo) pricing before anything is billed, then send the invite, magic link, workspace-token setup path, and first Good Baseline checklist.</p>
     </div>
     <form data-pilot-form>
       <label class="srOnly" for="pilot-request-email">Work email</label>
@@ -1323,7 +1323,7 @@ function pilotRequestPanel(): string {
       </select>
       <input name="context" type="text" autocomplete="off" placeholder="agent stack, team size, or biggest drift pain">
       <label class="srOnly hpField">Website <input name="website" type="text" autocomplete="off" tabindex="-1"></label>
-      <button class="btn btnPrimary" type="submit" data-fast-goal="pilot_request" data-fast-goal-location="pricing">Request pilot &rarr;</button>
+      <button class="btn btnPrimary" type="submit" data-fast-goal="pilot_request" data-fast-goal-location="pricing">Request pilot invite &rarr;</button>
       <p class="leadStatus" data-pilot-status aria-live="polite"></p>
     </form>
   </section>`;
@@ -1369,11 +1369,11 @@ function blogPage(env: Env): string {
         <p>Baseline does not try to prove that one model is better than another in the abstract. Your risk is local: this agent, in this repo, with these tools, under today's config.</p>
         <p>The score is a workstation health signal, not a trophy. Use it to decide whether to proceed, repair, or rerun. When a run is clean, accept it. When it drifts, investigate the exact probe that changed.</p>
       </article>
-      <h2>SEO/AEO guides</h2>
+      <h2>Guides</h2>
       <div class="blogGrid contentIndex">
         ${guides.map(contentCard).join("")}
       </div>
-      <h2>Lead resources</h2>
+      <h2>Checklists and templates</h2>
       <div class="blogGrid contentIndex">
         ${resources.map(contentCard).join("")}
       </div>
@@ -1407,7 +1407,7 @@ function contentPage(env: Env, page: ContentPage): string {
       <h1>${escapeHTML(page.heading)}</h1>
       <p class="ledeText">${escapeHTML(page.lede)}</p>
       <div class="resourceMeta">
-        <span>${page.kind === "article" ? "SEO/AEO guide" : "Lead resource"}</span>
+        <span>${page.kind === "article" ? "Guide" : "Free resource"}</span>
         <span>Updated ${escapeHTML(page.updated)}</span>
         <span>${escapeHTML(page.audience)}</span>
       </div>
@@ -1421,7 +1421,7 @@ function contentPage(env: Env, page: ContentPage): string {
       </section>
       ${leadMagnetCapture(page)}
       <section class="contentCta">
-        <h2>${escapeHTML(page.cta)}</h2>
+        <h2>${escapeHTML(page.kind === "lead_magnet" ? "Use the resource now. Ask for a pilot invite when you want help applying it." : page.cta)}</h2>
         <div class="actions">
           <a class="button primary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="content_${page.kind}">Install Baseline</a>
           <a class="button secondary" href="/blog">Browse all guides</a>
@@ -1443,16 +1443,16 @@ function leadMagnetCapture(page: ContentPage): string {
   const inputId = `resource-email-${page.path.split("/").pop() || "resource"}`;
   return `<section class="leadCapture" data-resource="${escapeHTML(page.path)}">
     <div>
-      <p class="eyebrow">Lead magnet</p>
-      <h2>Request the worksheet follow-up and 7-day pilot prompt.</h2>
-      <p>The checklist stays on this page. Leave an email if you want the follow-up prompt and a quick note on where this resource fits in your agent workflow.</p>
+      <p class="eyebrow">Free resource</p>
+      <h2>Use the resource now, or ask for a pilot invite.</h2>
+      <p>The resource stays on this page. Leave an email if you want a 7-day pilot invite and a short note on where this fits in your agent workflow.</p>
     </div>
     <form data-resource-form data-resource="${escapeHTML(page.path)}">
       <label class="srOnly" for="${escapeHTML(inputId)}">Work email</label>
       <input id="${escapeHTML(inputId)}" name="email" type="email" autocomplete="email" placeholder="work email" required>
       <input name="context" type="text" autocomplete="off" placeholder="agent stack or biggest drift pain">
       <label class="srOnly hpField">Website <input name="website" type="text" autocomplete="off" tabindex="-1"></label>
-      <button class="btn btnPrimary" type="submit" data-fast-goal="lead_magnet_request" data-fast-goal-location="${escapeHTML(page.path)}">Request pilot prompt</button>
+      <button class="btn btnPrimary" type="submit" data-fast-goal="lead_magnet_request" data-fast-goal-location="${escapeHTML(page.path)}">Request pilot invite</button>
       <p class="leadStatus" data-resource-status aria-live="polite"></p>
     </form>
   </section>`;
@@ -1485,17 +1485,36 @@ function contentJsonLD(env: Env, page: ContentPage): string {
 }
 
 function checkoutSuccessPage(env: Env): string {
+  const origin = baseURL(env);
+  const tokenSetup = `# Open the magic link first. Its response includes session_token.
+SESSION_TOKEN=YOUR_SESSION_TOKEN
+
+curl -sS ${origin}/api/workspaces \\
+  -H "authorization: Bearer $SESSION_TOKEN" \\
+  -H "content-type: application/json" \\
+  --data '{"workspace_hash":"sha256:your-workspace","display_name_redacted":"main repo"}'
+
+WORKSPACE_ID=PASTE_WORKSPACE_ID_FROM_RESPONSE
+
+curl -sS ${origin}/api/tokens \\
+  -H "authorization: Bearer $SESSION_TOKEN" \\
+  -H "content-type: application/json" \\
+  --data '{"workspace_id":"'"$WORKSPACE_ID"'"}'
+
+# Copy the returned token. It is shown once.
+baseline sync on --url ${origin} --token YOUR_WORKSPACE_TOKEN
+baseline sync push`;
   return layout(env, {
-    title: "Baseline.ai Pro checkout success",
-    description: "Baseline Pro checkout success return page for account setup and redacted sync.",
+    title: "Baseline.ai checkout success",
+    description: "Baseline checkout success return page for account setup and redacted sync.",
     path: "/checkout/success",
     noindex: true,
     structuredData: softwareJsonLD(env)
   }, `
     <main class="doc">
       <p class="eyebrow">Checkout returned</p>
-      <h1>Pro checkout received.</h1>
-      <p>Your subscription is now tied to the email used at checkout. Request the magic link for that email, open it, then create a workspace token for redacted sync.</p>
+      <h1>Checkout received.</h1>
+      <p>Your subscription is tied to the email used at checkout. Request the magic link for that email; opening it signs you in and returns a session token. Use that session token to create a workspace token, then sync redacted runs from the local CLI.</p>
       <div id="checkout-session-status" class="alert warning">Checking Stripe return status.</div>
       <section class="resourceBox">
         <h2>Send the account link</h2>
@@ -1507,19 +1526,12 @@ function checkoutSuccessPage(env: Env): string {
         </form>
       </section>
       <h2>After the link opens</h2>
-      <pre><code>POST ${escapeHTML(baseURL(env))}/api/workspaces
-Authorization: Bearer YOUR_SESSION_TOKEN
-
-POST ${escapeHTML(baseURL(env))}/api/tokens
-Authorization: Bearer YOUR_SESSION_TOKEN
-
-baseline sync on --url ${escapeHTML(baseURL(env))} \\
-  --token YOUR_WORKSPACE_TOKEN
-baseline sync push</code></pre>
+      <p>The magic-link response includes <code>session_token</code>. Paste it below, create one workspace, create one token, then turn on sync locally.</p>
+      ${copyCommandBlock(tokenSetup, "Workspace token setup")}
       <p><a class="button primary" href="/docs/mcp">Open setup docs</a></p>
     </main>
     ${checkoutSuccessScript()}
-    <script>window.datafast && window.datafast("checkout_return_success", { plan: "pro", provider: "stripe" });</script>
+    <script>window.datafast && window.datafast("checkout_return_success", { provider: "stripe" });</script>
   `);
 }
 
@@ -1542,19 +1554,19 @@ function checkoutNeedsEmailPage(env: Env, plan: string): string {
 
 function checkoutCancelPage(env: Env): string {
   return layout(env, {
-    title: "Baseline.ai Pro checkout canceled",
-    description: "Baseline Pro checkout cancellation page with local CLI recovery path.",
+    title: "Baseline.ai checkout canceled",
+    description: "Baseline checkout cancellation page with local CLI recovery path.",
     path: "/checkout/cancel",
     noindex: true,
     structuredData: softwareJsonLD(env)
   }, `
     <main class="doc">
       <p class="eyebrow">Checkout canceled</p>
-      <h1>No Pro subscription was started.</h1>
-      <p>The local Baseline CLI and MCP remain free. Pro is for monitored history, alerting, and team-visible evidence once the local loop is useful.</p>
+      <h1>No subscription was started.</h1>
+      <p>The local Baseline CLI and MCP remain free. Paid plans are for monitored history, account workspaces, and team-visible evidence once the local loop is useful.</p>
       <p><a class="button secondary" href="/">Return home</a></p>
     </main>
-    <script>window.datafast && window.datafast("checkout_return_cancel", { plan: "pro", provider: "stripe" });</script>
+    <script>window.datafast && window.datafast("checkout_return_cancel", { provider: "stripe" });</script>
   `);
 }
 
@@ -1582,10 +1594,10 @@ function dashboardPage(env: Env): string {
         <div class="panel"><h2>Current risk</h2><div id="current-risk"><div class="alert warning">Loading risk summary.</div></div></div>
         <div class="panel"><h2>Next operator action</h2><div id="next-action"><div class="alert warning">Loading recommended next step.</div></div></div>
         <div class="panel"><h2>Install-to-value path</h2><p>Use the local loop first. Pro history is useful only after the workstation is producing reviewed, redacted runs.</p><pre><code>baseline setup
-baseline report
+baseline run --mode fast
+baseline report RUN_ID
 baseline accept RUN_ID \\
   --confirm "accept RUN_ID"
-baseline run
 baseline compare</code></pre></div>
         <div class="panel"><h2>Latest findings</h2><div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div></div>
         <div class="panel"><h2>Recent runs</h2><table id="run-timeline"><tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr></table></div>
@@ -1712,7 +1724,7 @@ function privacyPage(env: Env): string {
     description: "Baseline privacy notes for local-first agent health checks and redacted cloud sync.",
     path: "/privacy"
   }, `
-    <main class="doc"><h1>Privacy</h1><p>Baseline is local-first. Cloud sync stores run summaries, health scores, findings, and redacted observation hashes. Raw prompts and outputs are not required for v0 cloud sync.</p><p>API tokens can be revoked by deleting them from the local config and dashboard. Synthetic and user-provided redaction checks run before export.</p></main>
+    <main class="doc"><h1>Privacy</h1><p>Baseline is local-first. Raw prompts, raw outputs, and repository paths stay on the workstation by default. Cloud sync stores run summaries, health scores, findings, workspace hashes, and redacted observation hashes.</p><p>Raw output export happens only if the operator explicitly enables <code>allow_raw_output</code> in <code>~/.baseline/config.json</code>. API tokens can be revoked by deleting them from the local config and dashboard. Synthetic and user-provided redaction checks run before export.</p></main>
   `);
 }
 
@@ -1803,7 +1815,7 @@ function checkoutSuccessScript(): string {
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || "magic link failed");
           window.datafast && window.datafast("magic_link_requested", { location: "checkout_success" });
-          write("Check that inbox for the Baseline account link. After opening it, create a workspace token from the account API.");
+          write("Check that inbox for the Baseline account link. After opening it, copy the session_token from the response and use the workspace-token setup block below.");
         } catch (error) {
           write(error && error.message ? String(error.message) : "Magic link could not be sent.");
         } finally {
@@ -1922,6 +1934,8 @@ function dashboardScript(): string {
           }).join("");
         }
       } catch (error) {
+        const demoBanner = document.getElementById("dashboard-demo-banner");
+        if (demoBanner) demoBanner.hidden = false;
         setText("dashboard-summary", "Dashboard could not load run data.");
         setHTML("next-action", "<div class=\\"alert warning\\">Run baseline setup locally, then sync a redacted run before relying on the dashboard.</div>");
       }
@@ -2026,7 +2040,7 @@ function layout(env: Env, meta: PageMeta, body: string): string {
   <header class="nav">
     <a href="/" class="brandLockup"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a>
     <nav class="navLinks"><a href="/#the-check">the check</a><a href="/docs/mcp">docs</a><a href="/#pricing">pricing</a><a href="/blog">field notes</a></nav>
-    <div class="navCtas"><a href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="nav">sign in</a><a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="nav">install</a></div>
+    <div class="navCtas"><a href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="nav">dashboard</a><a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="nav">install</a></div>
   </header>
   ${body}
   <footer><a href="/" class="brandLockup small"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>2026 TRACKBASELINE.COM</span></footer>
@@ -2087,10 +2101,10 @@ function layout(env: Env, meta: PageMeta, body: string): string {
           var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
           var body = await response.json();
           if (!response.ok) throw new Error(body && body.error || 'request_failed');
-          if (status) status.textContent = 'Request recorded. Use the worksheet above now; the follow-up request is in.';
+          if (status) status.textContent = 'Request recorded. Use the resource on this page now; the pilot invite request is in.';
           form.reset();
         } catch (error) {
-          if (status) status.textContent = 'The worksheet is still here. Try again if you want the follow-up prompt.';
+          if (status) status.textContent = 'The resource is still here. Try again if you want the pilot invite follow-up.';
         } finally {
           if (button) button.disabled = false;
         }
@@ -2121,7 +2135,7 @@ function layout(env: Env, meta: PageMeta, body: string): string {
           var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
           var body = await response.json();
           if (!response.ok) throw new Error(body && body.error || 'request_failed');
-          if (status) status.textContent = 'Pilot request recorded. Keep the local CLI handy; the invite path starts with a magic link.';
+          if (status) status.textContent = 'Pilot request recorded. We will reply by email with the invite path and next setup step.';
           form.reset();
         } catch (error) {
           if (status) status.textContent = error && error.message ? String(error.message) : 'Pilot request could not be recorded.';
@@ -2478,7 +2492,7 @@ function softwareJsonLD(env: Env): string {
     name: "Baseline.ai",
     applicationCategory: "DeveloperApplication",
     operatingSystem: "macOS, Linux",
-    offers: [{ "@type": "Offer", price: "0", priceCurrency: "USD" }, { "@type": "Offer", price: "39", priceCurrency: "USD" }],
+    offers: [{ "@type": "Offer", price: "0", priceCurrency: "USD" }, { "@type": "Offer", price: "39", priceCurrency: "USD" }, { "@type": "Offer", price: "129", priceCurrency: "USD" }],
     url: baseURL(env)
   })}</script>`;
 }

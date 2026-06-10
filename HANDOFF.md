@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-34-website-production-integration`.
+- Working branch: `codex/feat/bead-34-fable-copy-polish`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -17,11 +17,12 @@
   - Bead 33: market-effectiveness pass for first organic customer path. Added eight guide routes, five lead resources, lead request capture/admin queue/Klaviyo events, dashboard/admin clarity, CLI `--version`, docs/package first-run guidance, and Worker deploy `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
   - Bead 34: commercial viability pass from fresh `subreview`. Added pilot request capture, admin pilot invite/grant UI, email-first Pro/Team checkout attribution, operational checkout success magic-link/token guidance, safe checkout-session status, public dashboard account-private filtering/demo labeling, account-scoped run upsert guard, and paid-pilot deployment docs.
   - Bead 34 website clarity integration: the standalone `codex/feat/bead-34-website-clarity` branch was based before Bead 33/34 commercial work, so it was not deployed directly. Its public copy, sample labels, copyable commands, field-note blog sections, metadata, robots, and sitemap improvements are integrated onto the commercial-viability branch and deployed as Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939`.
+  - Bead 34 Fable copy polish: `subreview` was rerun on latest squashed `main` with Claude Fable 5 only and confirmed via manifest. Applied traced user-facing copy fixes: concrete checkout-success onboarding, visitor-facing resource labels, corrected dashboard command order, plan-neutral checkout copy, clearer pilot/pricing/privacy copy, and Worker deploy `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
 - Canonical production URL is now `https://trackbaseline.com`.
-- Current integration branch preserves Bead 33 content/lead routes, Bead 34 commercial checkout/pilot/admin routes, and the Bead 34 website clarity copy pass in a single production-ready Worker.
+- Current production branch preserves Bead 33 content/lead routes, Bead 34 commercial checkout/pilot/admin routes, the Bead 34 website clarity copy pass, and the Claude Fable 5 anti-slop copy polish in a single production-ready Worker.
 - Public install command is now `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release assets and checksum verification.
 - Production Pro secrets are active: Stripe Checkout, Stripe webhook verification, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. Do not print secret values.
 - DataFast website id is `6a0c48aa9a21aee7bf04cf6e`; tracking id is `dfid_PYprhfTkwwQKhkzRUhVtO`; CLI-created funnels are `baseline-install-funnel` and `baseline-pro-funnel`.
@@ -52,8 +53,8 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 34 integration is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on `codex/feat/bead-34-website-production-integration`.
-- Current Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` is live on `https://trackbaseline.com`; rollback target is previous Bead 34 commercial version `7940fc3a-f89e-4972-9352-e77424b541a6`.
+- Bead 34 Fable copy polish is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on `codex/feat/bead-34-fable-copy-polish`.
+- Current Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1` is live on `https://trackbaseline.com`; rollback target is previous website integration version `214cec6e-a79d-4360-8aa3-a19e2eb42939`.
 - Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
 
 ## Commands To Re-run
@@ -103,6 +104,7 @@
 - Bead 34 live deploy: `wrangler deploy` with sourced Cloudflare env succeeded at Worker version `7940fc3a-f89e-4972-9352-e77424b541a6`. Live health returned all production surfaces configured (`db`, `stripe`, `lifecycle_email`, `pro_auth`, `pro_tokens`, `stripe_webhook`). Live homepage, checkout success, checkout email guard, invalid lead guard, and synthetic `codex-smoke+bead34@example.com` pilot request passed. `/api/admin/leads` readback is `UNCONFIRMED` from this shell because the local env did not include `BASELINE_ADMIN_TOKEN`; unauthenticated `401` was verified.
 - Bead 34 website clarity source: standalone commit `9b0e90e944520346c494585169f8131d32b3e111` on `codex/feat/bead-34-website-clarity` passed `make verify`, `git diff --check`, local Worker route smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, `/sitemap.xml`, Playwright desktop/mobile overflow checks, and copy-button feedback checks. Screenshots were saved under `/tmp/baseline-website-clarity-*.png`.
 - Bead 34 integration deploy: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local route smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, `/sitemap.xml`, `/checkout/success`, and `/admin`, Wrangler deploy, and live smokes all passed. Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` serves the integrated website clarity plus commercial-viability surface. The high-severity audit gate passed with the known moderate Wrangler/Miniflare `ws` chain only.
+- Bead 34 Fable copy polish: `subreview --reviewers claude --base HEAD^ HEAD` completed with Claude Fable 5 only; manifest at `/tmp/baseline-subreview-fable-copy-20260610T0315Z/manifest.json` records `model: claude-fable-5`, 1 completed reviewer, and 0 failed reviewers. Applied the actionable copy findings, then passed `npm --prefix web run typecheck`, `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local route smokes on `http://localhost:8789`, production deploy, live `/api/health`, live homepage/blog/resource/checkout/dashboard/privacy smokes, and live negative copy sweep. Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1` is live.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.

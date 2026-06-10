@@ -5,10 +5,55 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `214cec6e-a79d-4360-8aa3-a19e2eb42939`
-- Current production source branch: `codex/feat/bead-34-website-production-integration`
+- Current Version ID: `4966bc91-0e4a-4657-8589-96a14e78d2c1`
+- Current production source branch: `codex/feat/bead-34-fable-copy-polish`
 - Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration`
-- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, and the Bead 34 public website clarity pass.
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, and the Claude Fable 5 anti-slop copy polish.
+
+## 2026-06-10 Claude Fable 5 Copy Polish Deploy
+
+`subreview` was rerun on the latest squashed `main` integration with Claude Fable 5 only. It reviewed `HEAD^...HEAD` against the public website/copy scope and wrote the completed manifest to `/tmp/baseline-subreview-fable-copy-20260610T0315Z/manifest.json` with `model: "claude-fable-5"`, `Completed reviewers: 1`, and `Failed reviewers: 0`.
+
+Applied copy fixes:
+
+- Removed the unsupported public "Claude Code" hero claim while keeping the approved local runner language.
+- Replaced public funnel labels like "SEO/AEO", "lead resource", "lead magnet", and "pilot prompt" with visitor-facing guide/resource/pilot-invite language.
+- Rewrote `/checkout/success` so the buyer sees a concrete magic-link/session-token/workspace-token/sync sequence, not pseudo-HTTP.
+- Fixed dashboard install-to-value order to `setup -> run -> report -> accept -> compare` and made the dashboard failure path reveal the example-data banner.
+- Made checkout success/cancel copy plan-neutral for Pro and Team buyers.
+- Clarified pricing bullets, the 7-day pilot expectation, privacy boundaries, example data labels, JSON-LD offers, and staging-safe install commands.
+
+Deployment result:
+
+- Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Source branch: `codex/feat/bead-34-fable-copy-polish`.
+
+Validation:
+
+```sh
+SUBREVIEW_REVIEWERS=claude SUBREVIEW_CLAUDE_MODEL=claude-fable-5 subreview --reviewers claude --base HEAD^ HEAD --output /tmp/baseline-subreview-fable-copy-20260610T0315Z --intent "Copy and messaging review only..."
+npm --prefix web run typecheck
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS http://localhost:8789/ | rg -n "Baseline probes OpenClaw, Codex, Hermes, or any approved local runner|Example fast run|7-day setup pilot|Request pilot invite"
+curl -fsS http://localhost:8789/checkout/success | rg -n "Checkout received|session_token|Workspace token setup|baseline sync on"
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Baseline probes OpenClaw, Codex, Hermes, or any approved local runner|Example fast run|7-day setup pilot|Request pilot invite"
+curl -fsS https://trackbaseline.com/checkout/success | rg -n "Checkout received|session_token|Workspace token setup|baseline sync on"
+for route in / /blog /resources/coding-agent-health-checklist /checkout/success /dashboard /privacy; do curl -fsS "https://trackbaseline.com$route" | rg -n "Claude Code|SEO/AEO|Lead magnet|pilot prompt|Lifecycle email|support handoffs|Pro checkout received|No Pro subscription|sample \\." && exit 1 || true; done
+```
+
+Results:
+
+- `npm --prefix web run typecheck`, `make verify`, `git diff --check`, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- Local and live route smokes passed for homepage, blog, resource page, checkout success, dashboard, and privacy copy.
+- Live `/api/health` returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live negative copy sweep found no `Claude Code`, `SEO/AEO`, `Lead magnet`, `pilot prompt`, `Lifecycle email`, `support handoffs`, plan-wrong checkout wording, or duplicate `sample .` labels.
+
+Rollback:
+
+- Preferred rollback target: previous website integration Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939`.
 
 ## 2026-05-14 Cloudflare Deploy
 
