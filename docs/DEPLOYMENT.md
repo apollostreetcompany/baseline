@@ -5,10 +5,50 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `4966bc91-0e4a-4657-8589-96a14e78d2c1`
-- Current production source branch: `codex/feat/bead-34-fable-copy-polish`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration`
+- Current Version ID: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
+- Current production source branch: `origin/main` at `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead34-main`
 - Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, and the Claude Fable 5 anti-slop copy polish.
+
+## 2026-06-10 Current Main Production Redeploy
+
+After PR #7 and PR #8 were already merged to `main`, the exact `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` was redeployed from a clean release worktree so production reflects the merged website clarity and Claude Fable 5 copy polish.
+
+Deployment result:
+
+- Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Source branch: `origin/main`.
+- Source commit: `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b`.
+
+Validation:
+
+```sh
+make verify-all
+git diff --check
+npm --prefix web audit --audit-level=high
+cd web && npx wrangler deploy --dry-run
+cd web && npm run deploy
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Know when your coding agent quietly changed|copy install command|Sample data"
+curl -fsS https://trackbaseline.com/blog | rg -n "Field notes for agent operators|How to accept a Good Baseline|MCP drift"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Install Baseline, run a check|baseline run --mode fast|Universal MCP smoke"
+curl -fsS https://trackbaseline.com/robots.txt | rg -n "Sitemap: https://trackbaseline.com/sitemap.xml|Disallow: /dashboard|Disallow: /checkout|Disallow: /api/"
+curl -fsS https://trackbaseline.com/sitemap.xml | rg -n "https://trackbaseline.com/</loc>|https://trackbaseline.com/docs/mcp</loc>|https://trackbaseline.com/blog</loc>"
+curl -fsS https://www.trackbaseline.com/api/health | rg -n '"ok":true'
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health | rg -n '"ok":true'
+curl -i -sS https://trackbaseline.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Results:
+
+- `make verify-all`, `git diff --check`, Wrangler dry run, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- Live health returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live homepage, blog, MCP docs, robots, sitemap, `www`, and workers.dev fallback smokes passed.
+- Live unauthenticated `/mcp` returned HTTP `401` with `WWW-Authenticate` and `authentication_required`.
+
+Rollback:
+
+- Preferred rollback target: previous Fable copy polish Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
 
 ## 2026-06-10 Claude Fable 5 Copy Polish Deploy
 
