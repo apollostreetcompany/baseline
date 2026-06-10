@@ -1,7 +1,7 @@
 # CONTINUITY.md - Baseline.ai
 
 ## Goal (incl. success criteria)
-Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Current Bead 33 success is a market-effectiveness pass that gives Baseline a credible path to its first organic customer in 30 days through SEO/AEO content, lead magnets, clearer dashboard/admin UX, and package/core functionality that makes the acquisition promise real.
+Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Current Bead 34 success is a commercial-viability pass that turns the Bead 33 acquisition surface into a first-customer path: pilot request, admin invite, paid checkout, magic-link onboarding, workspace token, redacted sync, and account-private history.
 
 ## Constraints/Assumptions
 - Git remote `origin` is configured as `https://github.com/apollostreetcompany/baseline.git`.
@@ -43,6 +43,8 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 33 entry gate: focus on MARKET EFFECTIVENESS ONLY. Scope is organic acquisition via 5-10 SEO/AEO blog posts, 3-5 lead magnets attached to the public surface, dashboard/admin UX clarity, and package/core changes that support install-to-value. Risk class is High because deploy/runtime and public web/API surfaces may be touched. Agent path: Architect/strategy synthesis by primary Codex, fresh skill-specific RepoPrompt subagents, domain implementation by engineer agents or primary Codex as needed, then Proconsult and subreview advisory review before deploy.
 - Bead 33 market decision: own the "local coding-agent health/drift/MCP workstation check" wedge instead of broad LLM observability. Ship eight guide routes, five resource/lead-magnet routes, an actionable lead queue, live Klaviyo lead/master events when configured, clearer dashboard/admin next-action UX, and `baseline --version` as a first-run smoke.
 - Bead 33 deployment decision: deployed Cloudflare Worker version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8` to `https://trackbaseline.com`; rollback target is previous version `b4f73e11-7540-4e97-8112-7698467b0484`. Wrangler deploy requires the Cloudflare account/token env values to be sourced; an unsourced OAuth token failed with Cloudflare `Authentication error [code: 10000]`.
+- Bead 34 commercial viability decision: treat first paid customer conversion as a hand-held paid-pilot/account-provisioning problem, not only an SEO/content problem. The public path now captures pilot requests, paid checkout requires email-first account attribution, checkout success requests the magic link and shows token/sync steps, admin can grant a Pro/Team pilot invite, public demo/dashboard surfaces avoid exposing account-private runs, and Stripe webhooks fall back through customer/email before granting entitlement.
+- Bead 34 deployment decision: deployed Cloudflare Worker version `7940fc3a-f89e-4972-9352-e77424b541a6` to `https://trackbaseline.com`. Rollback target is previous Bead 33 version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`. Live admin lead readback remains `UNCONFIRMED` from this shell because the local deploy env has Cloudflare credentials but not `BASELINE_ADMIN_TOKEN`.
 
 ## State
 ### Done
@@ -80,10 +82,11 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 31: Added robot photo favicon/app icon assets, wired icon metadata and web manifest, and deployed Worker version `b4f73e11-7540-4e97-8112-7698467b0484`.
 - [x] Bead 32: Added a validated Codex plugin v1 under `plugins/baseline/`, repo-local marketplace metadata, `baseline-codex-plugin.tgz` release packaging, plugin validation target, and productionization roadmap.
 - [x] Bead 33: Added an SEO/AEO content and lead-magnet acquisition surface, lead request capture/notification/admin queue, dashboard/admin market clarity, CLI version smoke, docs/package first-run guidance, and deployed Worker version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
+- [x] Bead 34: Added commercial viability fixes from subreview: pilot request capture, admin pilot invite, email-first Pro/Team checkout, operational checkout success onboarding, scoped checkout-session status, account-safe public dashboard APIs, account-scoped run upsert protection, and paid-pilot deployment docs.
 
 ### Now
-- Bead 33 is implemented and deployed from sibling worktree `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets` on branch `codex/feat/bead-33-seo-lead-magnets`, based on Bead 32 (`afba95b`) so the source checkout remains untouched.
-- Bead 33 acceptance tests passed: public page exposes a coherent SEO/lead-magnet acquisition path; 8 guide routes and 5 lead resources are indexed under `/blog` and `/sitemap.xml`; dashboard/admin UX improves market clarity; package/core flow includes `baseline --version`; `make verify`, `make plugin-validate`, CLI version smoke, local route smokes, Playwright screenshots, Wrangler deploy, and live production smokes passed. `subreview` completed partially with Claude; actionable lead-capture findings were integrated. Proconsult was attempted twice and blocked by browser attachment upload timeouts.
+- Bead 34 is implemented locally from sibling worktree `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability` on branch `codex/feat/bead-34-commercial-viability`, based on Bead 33 (`0ac35af`) so the source checkout remains untouched.
+- Bead 34 acceptance tests passed: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local Worker smokes for `/`, `/checkout/success`, `/api/checkout`, `/api/events`, `/admin`, `/dashboard`, `/api/runs/latest`, Playwright screenshots for pricing/pilot, checkout success, admin pilot, and dashboard demo, Wrangler deploy, and live smokes for health, homepage markers, checkout success markers, email-required checkout guard, invalid lead guard, and synthetic pilot request storage. `subreview` completed partially: Claude completed with 14 findings; Codex failed on CLI argument incompatibility; Gemini quota was exhausted. Acted on the short-path commercial findings.
 - Branch `codex/feat/bead-32-codex-plugin` contains the first Codex plugin v1. `make plugin-validate`, `make test`, `make package-test`, `make web-typecheck`, JSON/path checks, shell syntax checks, and temp `DIST_DIR` release build all pass locally.
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
 - Public install works through `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release `v0.1.0` assets and checksums. The npm wrapper can auto-download the same release, but the npm package is not published yet because this machine is not logged into npm.
@@ -120,6 +123,13 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 
 ## Working Set
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/web/src/index.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/web/src/cloud.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-pricing-pilot.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-checkout-success.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-admin-pilot.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-dashboard-demo.png`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/web/src/index.ts`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/docs/DEPLOYMENT.md`
 - `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/handoff/bead-33-blog.png`

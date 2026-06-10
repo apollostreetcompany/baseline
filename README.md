@@ -9,6 +9,7 @@ Live launch surface:
 - Admin: https://trackbaseline.com/admin
 - MCP docs: https://trackbaseline.com/docs/mcp
 - Content index: https://trackbaseline.com/blog
+- Paid pilot request: https://trackbaseline.com/#pilot-request
 - Remote MCP: https://trackbaseline.com/mcp
 - Latest run API: https://trackbaseline.com/api/runs/latest
 - Timeline API: https://trackbaseline.com/api/runs/timeline
@@ -65,6 +66,14 @@ For Pro, that token should now be a workspace token created from an invited acco
 ## Pro Cloud Account Path
 
 Baseline Pro is Cloudflare Worker + Neon first. The Worker stores users, accounts, sessions, workspaces, HMAC-hashed workspace tokens, Stripe subscriptions, entitlements, audit events, lifecycle outbox rows, self-history runs, and aggregate-safe comparison fields.
+
+First-customer path:
+
+1. A buyer starts Pro or Team checkout from the email-first pricing form, or requests a 7-day pilot from `/#pilot-request`.
+2. Admin converts qualified leads from `/admin` with **Invite pilot**, optionally granting pilot entitlement immediately.
+3. Checkout success or admin invite sends the buyer through magic-link auth.
+4. Buyer creates a workspace token, then runs `baseline sync on --url https://trackbaseline.com --token <token>` and `baseline sync push`.
+5. Account-private history is read through authenticated account APIs or remote MCP, not the public demo dashboard.
 
 Primary account routes:
 

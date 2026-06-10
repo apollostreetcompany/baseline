@@ -5,10 +5,10 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `0d0924c3-5c8e-4029-9327-369a73588786`
-- Current production source branch: `codex/deploy/trackbaseline-domain`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
-- Notes: current production combines the Bead 25 cloud account/remote MCP surface with the Bead 27 `landing-a` homepage redesign and Bead 28 `trackbaseline.com` custom-domain triggers.
+- Current Version ID: `7940fc3a-f89e-4972-9352-e77424b541a6`
+- Current production source branch: `codex/feat/bead-34-commercial-viability`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability`
+- Notes: current production combines the Bead 25 cloud account/remote MCP surface, Bead 33 SEO/lead-magnet acquisition surface, and Bead 34 commercial-viability checkout/pilot path.
 
 ## 2026-05-14 Cloudflare Deploy
 
@@ -132,7 +132,57 @@ Rollback:
 - Cloudflare Workers rollback to the previous deployment version from Wrangler or the Cloudflare dashboard.
 - If a schema bug is found, leave additive tables in place and rollback Worker code. Do not drop account/billing tables without explicit data-retention approval.
 
-Deployment result:
+## 2026-06-10 Commercial Viability Gate
+
+Bead 34 closes the first-customer gaps found by `subreview`:
+
+- `/checkout/success` is now an onboarding bridge: it checks the returned Stripe session, requests a magic link for the checkout email, and shows the workspace-token / `baseline sync on` path.
+- `/api/checkout/session` resolves the actual Stripe session and scopes entitlement hints to that session/account. It no longer returns the latest global entitlement.
+- Paid checkout now requires email before Stripe session creation. Payment links are disabled for onboarding because they cannot guarantee account metadata and entitlement provisioning.
+- Team checkout uses the same email-first form as Pro.
+- Stripe webhook completion falls back from checkout metadata to known Stripe customer row, then to Stripe customer email, before granting entitlement.
+- `/admin` includes an "Invite pilot" panel that calls `POST /api/admin/invites` with optional pilot entitlement.
+- Public pricing includes a `pilot_request` form; `/api/admin/leads` returns both lead-magnet and pilot requests with pagination.
+- Public `/api/runs/latest` and `/api/runs/timeline` exclude account-private Pro runs; dashboard demo rows are labeled as examples.
+
+Required paid-pilot smoke:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -sS -X POST https://trackbaseline.com/api/checkout \
+  -H 'content-type: application/json' \
+  --data '{"email":"pilot@example.com","plan":"pro"}'
+curl -sS -X POST https://trackbaseline.com/api/events \
+  -H 'content-type: application/json' \
+  --data '{"type":"pilot_request","email":"pilot@example.com","plan":"pro","context":"checkout smoke"}'
+curl -i -sS "https://trackbaseline.com/api/admin/leads" \
+  -H "authorization: Bearer REDACTED_ADMIN_TOKEN"
+```
+
+Klaviyo verification before announcing paid pilot:
+
+- `Baseline Lead Magnet Requested` flow sends the promised resource follow-up or pilot prompt.
+- `Baseline Pilot Requested` notifies the operator and/or starts the manual pilot follow-up.
+- `Baseline Magic Link` sends account login links for invites and checkout success.
+- `Baseline Subscription Started` sends the paid onboarding email with the magic link when configured.
+
+Rollback:
+
+- Previous deployed Bead 33 version: `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
+- Roll back Worker code from Cloudflare Workers versions if checkout/session behavior blocks production.
+- Database changes are additive or query-only; do not drop lead/account/billing tables during rollback.
+
+Bead 34 deployment result:
+
+- Worker version `7940fc3a-f89e-4972-9352-e77424b541a6` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Live `/api/health` returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live homepage exposes example scoreboard copy, Team email-first checkout form, and `/#pilot-request`.
+- Live `/checkout/success?session_id=cs_test_fake` renders the magic-link and workspace-token onboarding path; `/api/checkout/session` correctly fails closed without a real Stripe session/secret context.
+- Live `GET /api/checkout?plan=team` returns a human-readable email-required page instead of creating an unattributed Stripe session.
+- Live `POST /api/events` rejects `pilot_request` without a valid email and accepts a synthetic `codex-smoke+bead34@example.com` pilot request with Klaviyo configured.
+- Protected `/api/admin/leads` returned `401` from this shell because the local deploy env did not contain `BASELINE_ADMIN_TOKEN`; unauthenticated rejection was verified, but live lead readback remains to be confirmed with the operator/admin token.
+
+Bead 25 deployment result:
 
 - First deploy version `c8adbd91-0139-461a-953c-91b76c9085be` succeeded but uploaded an untracked `.DS_Store` static asset from `web/public`.
 - `.DS_Store` was added to `.gitignore`, the stray local metadata files were removed, and the Worker was redeployed.

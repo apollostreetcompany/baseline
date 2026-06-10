@@ -674,17 +674,34 @@ async function checkoutSessionStatus(request: Request, env: CloudEnv): Promise<R
   await ensureCloudSchema(sql);
   const sessionID = new URL(request.url).searchParams.get("session_id") || "";
   if (!sessionID) return json({ ok: false, error: "session_id required" }, 400);
+  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, error: "STRIPE_SECRET_KEY is not configured" }, 503);
+  const response = await fetch("https://api.stripe.com/v1/checkout/sessions/" + encodeURIComponent(sessionID), {
+    headers: { authorization: "Bearer " + env.STRIPE_SECRET_KEY }
+  });
+  const session = await response.json<Record<string, unknown>>();
+  if (!response.ok) return json({ ok: false, error: stripeError(session, "Stripe session lookup failed") }, 502);
+  const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata as Record<string, unknown> : {};
+  let accountID = String(metadata.account_id || session.client_reference_id || "");
+  const customerID = String(session.customer || "");
+  const email = checkoutObjectEmail(session);
+  if (!accountID && customerID) {
+    const customers = await sql`select account_id from stripe_customers where stripe_customer_id = ${customerID} limit 1`;
+    accountID = customers.length ? String((customers[0] as Record<string, unknown>).account_id) : "";
+  }
   const rows = await sql`
     select e.account_id, e.status, e.monitoring_enabled, e.expires_at, a.plan_key
     from entitlements e
     join accounts a on a.id = e.account_id
     where e.key = ${PRO_ENTITLEMENT}
+      and e.account_id = ${accountID}
     order by e.updated_at desc
     limit 1
   `;
   return json({
     ok: true,
     session_id: sessionID,
+    payment_status: session.payment_status || null,
+    email_hint: email || null,
     entitlement_hint: rows[0] || null,
     next_actions: ["Stripe webhook is the source of truth. If status is pending, wait for webhook delivery or check Stripe events."]
   });
@@ -712,7 +729,7 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
   `;
   if (!inserted.length) return json({ ok: true, duplicate: true });
   try {
-    await processStripeEvent(sql, event);
+    await processStripeEvent(sql, event, env, ctx);
     await sql`update stripe_events set status = 'processed', processed_at = now() where stripe_event_id = ${eventID}`;
     const object = stripeObject(event);
     const email = normalizeEmail(String(object.customer_email || object.email || "")) || "";
@@ -1106,17 +1123,42 @@ async function grantEntitlement(
   await sql`update accounts set status = ${status}, plan_key = ${plan}, updated_at = now() where id = ${accountID}`;
 }
 
-async function processStripeEvent(sql: NeonQueryFunction<false, false>, event: Record<string, unknown>): Promise<void> {
+async function processStripeEvent(sql: NeonQueryFunction<false, false>, event: Record<string, unknown>, env: CloudEnv, ctx?: ExecutionContext): Promise<void> {
   const type = String(event.type || "");
   const object = stripeObject(event);
   if (type === "checkout.session.completed") {
     const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
-    const accountID = String(metadata.account_id || "");
+    let accountID = String(metadata.account_id || "");
     const plan = String(metadata.plan_key || metadata.plan || "pro");
+    const customerID = String(object.customer || "");
+    const email = checkoutObjectEmail(object);
+    if (!accountID && customerID) {
+      const customers = await sql`select account_id from stripe_customers where stripe_customer_id = ${customerID} limit 1`;
+      accountID = customers.length ? String((customers[0] as Record<string, unknown>).account_id) : "";
+    }
+    if (!accountID && email) {
+      const account = await ensureAccountForEmail(sql, email, plan === "team" ? "team" : "pro");
+      accountID = account.accountId;
+      if (customerID) {
+        await sql`
+          insert into stripe_customers (id, account_id, user_id, stripe_customer_id, email_normalized, livemode)
+          values (${crypto.randomUUID()}, ${account.accountId}, ${account.userId}, ${customerID}, ${email}, ${Boolean(event.livemode)})
+          on conflict (stripe_customer_id) do update set account_id = excluded.account_id, user_id = excluded.user_id, email_normalized = excluded.email_normalized, updated_at = now()
+        `;
+      }
+    }
     if (!accountID) return;
     await grantEntitlement(sql, accountID, "active", "stripe", plan === "team" ? "team" : "pro", null);
     await audit(sql, "stripe", String(event.id || ""), "checkout.completed", "account", accountID, String(object.id || ""), { plan });
     await queueLifecycleEvent(sql, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", { plan, stripe_event_id: String(event.id || ""), stripe_event_type: type });
+    if (email && env.MAGIC_LINK_SECRET) {
+      const accountRows = await sql`select primary_user_id from accounts where id = ${accountID} limit 1`;
+      const userID = accountRows.length ? String((accountRows[0] as Record<string, unknown>).primary_user_id) : "";
+      if (userID) {
+        const link = await createMagicLink(sql, env, userID, accountID, email, "checkout");
+        ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Subscription Started", link.url, { purpose: "checkout", account_id: accountID, plan }));
+      }
+    }
     return;
   }
   if (type === "invoice.payment_failed") {
@@ -1365,6 +1407,11 @@ function parseObject(value: unknown): Record<string, unknown> | null {
 function stripeObject(event: Record<string, unknown>): Record<string, unknown> {
   const data = event.data && typeof event.data === "object" ? event.data as Record<string, unknown> : {};
   return data.object && typeof data.object === "object" ? data.object as Record<string, unknown> : {};
+}
+
+function checkoutObjectEmail(object: Record<string, unknown>): string {
+  const details = object.customer_details && typeof object.customer_details === "object" ? object.customer_details as Record<string, unknown> : {};
+  return normalizeEmail(String(object.customer_email || object.email || details.email || "")) || "";
 }
 
 function firstSubscriptionPrice(subscription: Record<string, unknown>): string {

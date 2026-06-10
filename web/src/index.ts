@@ -309,10 +309,7 @@ export default {
       if (read && url.pathname === "/api/admin/evaluations") return listEvaluations(request, env);
       if (read && url.pathname === "/api/admin/leads") return listLeadMagnetRequests(request, env);
       if (request.method === "POST" && url.pathname === "/api/runs") return ingestRun(request, env);
-      if (request.method === "POST" && url.pathname === "/api/events") {
-        ctx.waitUntil(recordEvent(request, env, url.pathname));
-        return json({ ok: true });
-      }
+      if (request.method === "POST" && url.pathname === "/api/events") return recordEvent(request, env, url.pathname);
       if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/checkout") return checkout(request, env, ctx);
       return html(notFoundPage(env), 404);
     } catch (error) {
@@ -325,17 +322,29 @@ async function latestRun(request: Request, env: Env): Promise<Response> {
   const sql = configuredSQL(env);
   if (!sql) return json({ ok: true, configured: false, run: demoRun(), origin: baseURL(env, request) });
   await ensureSchema(sql);
-  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 1`;
+  const rows = await sql`
+    select id, workspace, agent_kind, status, health_score, mode, payload, created_at
+    from baseline_runs
+    where account_id is null or comparison_scope = 'legacy'
+    order by created_at desc
+    limit 1
+  `;
   const run = rows.length ? normalizeRun(rows[0] as Record<string, unknown>) : demoRun();
-  return json({ ok: true, configured: true, run, origin: baseURL(env, request) });
+  return json({ ok: true, configured: true, demo: !rows.length, run, origin: baseURL(env, request) });
 }
 
 async function runTimeline(env: Env): Promise<Response> {
   const sql = configuredSQL(env);
   if (!sql) return json({ ok: true, configured: false, runs: [demoRun()] });
   await ensureSchema(sql);
-  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 30`;
-  return json({ ok: true, configured: true, runs: rows.map((row) => normalizeRun(row as Record<string, unknown>)) });
+  const rows = await sql`
+    select id, workspace, agent_kind, status, health_score, mode, payload, created_at
+    from baseline_runs
+    where account_id is null or comparison_scope = 'legacy'
+    order by created_at desc
+    limit 30
+  `;
+  return json({ ok: true, configured: true, demo: !rows.length, runs: rows.length ? rows.map((row) => normalizeRun(row as Record<string, unknown>)) : [demoRun()] });
 }
 
 async function listQuestionSets(env: Env, admin: boolean, request?: Request): Promise<Response> {
@@ -417,20 +426,25 @@ async function listLeadMagnetRequests(request: Request, env: Env): Promise<Respo
   const sql = configuredSQL(env);
   if (!sql) return json({ ok: true, configured: false, leads: [] });
   await ensureSchema(sql);
+  const url = new URL(request.url);
+  const before = url.searchParams.get("before") || "";
   const rows = await sql`
-    select id, path, payload, created_at
+    select id, type, path, payload, created_at
     from baseline_events
-    where type = 'lead_magnet_request'
+    where type in ('lead_magnet_request', 'pilot_request')
+      and (${before} = '' or created_at < ${before})
     order by created_at desc
     limit 50
   `;
-  return json({ ok: true, configured: true, leads: rows.map(normalizeLeadMagnetRequest) });
+  const leads = rows.map(normalizeLeadMagnetRequest);
+  return json({ ok: true, configured: true, leads, next_before: leads.length ? leads[leads.length - 1].created_at : null });
 }
 
 function normalizeLeadMagnetRequest(row: Record<string, unknown>): Record<string, unknown> {
   const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload as Record<string, unknown> | undefined;
   return {
     id: row.id,
+    type: row.type || "lead_magnet_request",
     path: row.path,
     email: normalizeOptionalEmail(payload?.email),
     resource: typeof payload?.resource === "string" ? payload.resource : row.path,
@@ -448,7 +462,7 @@ async function ingestRun(request: Request, env: Env): Promise<Response> {
   const ingestContext = await resolveRunIngestContext(request, env, sql);
   if (ingestContext instanceof Response) return ingestContext;
   const accountPrivatePayload = ingestContext.legacy ? null : JSON.stringify(payload);
-  await sql`
+  const inserted = await sql`
     insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload, account_id, workspace_id, expires_at, account_private_payload, comparison_scope)
     values (
       ${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"},
@@ -467,7 +481,10 @@ async function ingestRun(request: Request, env: Env): Promise<Response> {
       expires_at = excluded.expires_at,
       account_private_payload = excluded.account_private_payload,
       comparison_scope = excluded.comparison_scope
+    where baseline_runs.account_id is not distinct from excluded.account_id
+    returning id
   `;
+  if (!inserted.length) return json({ ok: false, error: "run_id already belongs to a different account" }, 409);
   await recordRunAggregates(sql, payload, ingestContext);
   return json({ ok: true, account_scoped: !ingestContext.legacy });
 }
@@ -704,18 +721,28 @@ function average(values: number[]): number {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
-async function recordEvent(request: Request, env: Env, path: string): Promise<void> {
+async function recordEvent(request: Request, env: Env, path: string): Promise<Response> {
   let payload: Record<string, unknown> = {};
   try {
     payload = await request.json<Record<string, unknown>>();
   } catch {
     payload = {};
   }
-  if (leadHoneypotFilled(payload)) return;
+  if (leadHoneypotFilled(payload)) return json({ ok: true, spam: true });
   const eventType = String(payload.type || "event");
   const eventPath = String(payload.path || path);
-  if (eventType === "lead_magnet_request") await emitLeadMagnetRequestedEvents(env, payload, eventPath);
-  if (!env.DATABASE_URL) return;
+  if (eventType === "lead_magnet_request" || eventType === "pilot_request") {
+    if (!normalizeOptionalEmail(payload.email)) return json({ ok: false, error: "valid email required" }, 400);
+    await emitLeadMagnetRequestedEvents(env, payload, eventPath, eventType);
+  }
+  if (!env.DATABASE_URL) {
+    return json({
+      ok: true,
+      stored: false,
+      delivery: { provider: "klaviyo", configured: Boolean(env.KLAVIYO_PRIVATE_API_KEY) },
+      warning: "DATABASE_URL is not configured, so this event was not stored in the admin queue."
+    });
+  }
   const sql = neon(env.DATABASE_URL);
   await ensureSchema(sql);
   const storedPayload = scrubEventPayload(payload);
@@ -723,6 +750,11 @@ async function recordEvent(request: Request, env: Env, path: string): Promise<vo
     insert into baseline_events (id, type, path, payload)
     values (${crypto.randomUUID()}, ${eventType}, ${eventPath}, ${JSON.stringify(storedPayload)}::jsonb)
   `;
+  return json({
+    ok: true,
+    stored: true,
+    delivery: { provider: "klaviyo", configured: Boolean(env.KLAVIYO_PRIVATE_API_KEY) }
+  });
 }
 
 function leadHoneypotFilled(payload: Record<string, unknown>): boolean {
@@ -735,6 +767,8 @@ function scrubEventPayload(payload: Record<string, unknown>): Record<string, unk
   if (email) clean.email = email;
   else delete clean.email;
   if (typeof clean.context === "string") clean.context = clean.context.trim().slice(0, 240);
+  if (typeof clean.resource === "string") clean.resource = clean.resource.trim().slice(0, 180);
+  if (typeof clean.plan === "string") clean.plan = clean.plan.trim().slice(0, 24);
   delete clean.website;
   return clean;
 }
@@ -744,21 +778,24 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   const input = request.method === "POST" ? await safeCheckoutInput(request) : {};
   const plan = (input.plan || url.searchParams.get("plan")) === "team" ? "team" : "pro";
   const email = normalizeOptionalEmail(input.email);
+  const origin = baseURL(env, request);
+  if (!email) {
+    if (request.method === "GET") return html(checkoutNeedsEmailPage(env, plan), 400);
+    return json({ ok: false, error: "valid email required before checkout so the account can be provisioned" }, 400);
+  }
   const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   const paymentLink = plan === "team" ? env.STRIPE_PAYMENT_LINK_TEAM : env.STRIPE_PAYMENT_LINK_PRO;
   const canCreateCheckoutSession = Boolean(env.STRIPE_SECRET_KEY && price);
   if (paymentLink && !canCreateCheckoutSession) {
-    if (request.method === "POST") {
-      ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, true));
-      return json({ ok: true, url: paymentLink });
-    }
-    return Response.redirect(paymentLink, 303);
+    return json({
+      ok: false,
+      error: "Stripe Checkout Sessions are required for account provisioning; payment links are disabled for Baseline Pro onboarding."
+    }, 503);
   }
   if (!env.STRIPE_SECRET_KEY) {
-    return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links." }, 503);
+    return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM before paid checkout." }, 503);
   }
   if (!price) return json({ ok: false, error: "Stripe price id is not configured for " + plan }, 503);
-  const origin = baseURL(env, request);
   const body = new URLSearchParams({
     mode: "subscription",
     success_url: normalizeCheckoutReturn(input.successUrl, origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", origin),
@@ -861,24 +898,26 @@ async function emitCheckoutStartedEvents(env: Env, email: string | undefined, pl
   ]);
 }
 
-async function emitLeadMagnetRequestedEvents(env: Env, payload: Record<string, unknown>, path: string): Promise<void> {
+async function emitLeadMagnetRequestedEvents(env: Env, payload: Record<string, unknown>, path: string, eventType = "lead_magnet_request"): Promise<void> {
   const email = normalizeOptionalEmail(payload.email);
   const masterEmail = normalizeOptionalEmail(env.BASELINE_MASTER_EMAIL);
   const uniqueId = crypto.randomUUID();
   const time = new Date().toISOString();
+  const metric = eventType === "pilot_request" ? "Baseline Pilot Requested" : "Baseline Lead Magnet Requested";
   const properties = {
-    event_type: "lead_magnet_request",
+    event_type: eventType,
     site_id: "baseline-ai",
     app_url: baseURL(env),
     path,
     resource: typeof payload.resource === "string" ? payload.resource.slice(0, 180) : path,
+    plan: typeof payload.plan === "string" ? payload.plan.slice(0, 24) : "",
     context: typeof payload.context === "string" ? payload.context.trim().slice(0, 240) : "",
     customer_email_present: Boolean(email)
   };
   await Promise.all([
     emitKlaviyoEvent(env, {
       email,
-      metric: "Baseline Lead Magnet Requested",
+      metric,
       uniqueId,
       time,
       properties
@@ -1012,7 +1051,7 @@ function landingPage(env: Env): string {
       <section class="scoreboardSection" aria-labelledby="scoreboard-heading" data-fast-scroll="scroll_to_scoreboard">
         <div class="sectionTitleRow">
           <div>
-            <p class="eyebrow">Today . across your workstations</p>
+            <p class="eyebrow">Example . across workstations</p>
             <h2 id="scoreboard-heading">Three agents. One scoreboard.</h2>
           </div>
           <a class="underLink" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="scoreboard">open dashboard &rarr;</a>
@@ -1089,9 +1128,10 @@ function landingPage(env: Env): string {
         </div>
         <div class="priceTable">
           ${priceColumn("Local", "$0", "", "The whole product", ["SQLite store. MCP. Scrub preview.", "Local report artifacts.", "Good Baseline / compare."], "install", "/docs/mcp", false)}
-          ${priceColumn("Pro", "$39", "/mo / workstation", "When history matters", ["Redacted run history.", "Checkout-linked account.", "Lifecycle email + private probes."], "buy pro", "/api/checkout?plan=pro", true)}
-          ${priceColumn("Team", "$129", "/mo / team", "When alerts need to route", ["Shared dashboards.", "Token / workspace model.", "Audit exports."], "buy team", "/api/checkout?plan=team", false)}
+          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 workspaces.", "Redacted run history.", "Lifecycle email + private probes."], "buy pro", "/api/checkout?plan=pro", true)}
+          ${priceColumn("Team", "$129", "/mo", "When alerts need to route", ["Up to 10 workspaces.", "Shared dashboards.", "Audit exports."], "buy team", "/api/checkout?plan=team", true)}
         </div>
+        ${pilotRequestPanel()}
       </section>
 
       <section class="fieldNotes">
@@ -1234,6 +1274,7 @@ function stepBlocks(): string {
 
 function priceColumn(name: string, price: string, sub: string, tag: string, features: string[], cta: string, href: string, form: boolean): string {
   const plan = name.toLowerCase();
+  const emailId = `checkout-email-${plan}`;
   const goalAttrs = plan === "local"
     ? `data-fast-goal="install_click" data-fast-goal-plan="local" data-fast-goal-location="pricing"`
     : `data-fast-goal="checkout_start" data-fast-goal-plan="${plan}" data-fast-goal-price="${price.replace("$", "")}" data-fast-goal-currency="usd" data-fast-goal-location="pricing"`;
@@ -1243,14 +1284,36 @@ function priceColumn(name: string, price: string, sub: string, tag: string, feat
     <p class="price">${price}${sub ? `<span>${sub}</span>` : ""}</p>
     <ul>${features.map((feature) => `<li>${feature}</li>`).join("")}</ul>
     ${form ? `
-      <form class="checkoutForm" data-checkout-form>
-        <label class="srOnly" for="checkout-email">Email for Pro checkout</label>
-        <input id="checkout-email" name="email" type="email" autocomplete="email" placeholder="email" required>
+      <form class="checkoutForm" data-checkout-form data-plan="${plan}" data-price="${price.replace("$", "")}">
+        <label class="srOnly" for="${emailId}">Email for ${name} checkout</label>
+        <input id="${emailId}" name="email" type="email" autocomplete="email" placeholder="work email" required>
         <button class="btn btnPrimary" type="submit" ${goalAttrs}>${cta} &rarr;</button>
         <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
       </form>
     ` : `<a class="btn btnGhost" href="${href}" ${goalAttrs}>${cta} &rarr;</a>`}
   </article>`;
+}
+
+function pilotRequestPanel(): string {
+  return `<section class="leadCapture pilotCapture" id="pilot-request">
+    <div>
+      <p class="eyebrow">Paid pilot</p>
+      <h2>Want the first run watched with you?</h2>
+      <p>Request a 7-day Baseline pilot. The operator path is simple: invite, magic link, workspace token, redacted sync, then one reviewed Good Baseline.</p>
+    </div>
+    <form data-pilot-form>
+      <label class="srOnly" for="pilot-request-email">Work email</label>
+      <input id="pilot-request-email" name="email" type="email" autocomplete="email" placeholder="work email" required>
+      <select name="plan" aria-label="Pilot plan">
+        <option value="pro">Pro pilot</option>
+        <option value="team">Team pilot</option>
+      </select>
+      <input name="context" type="text" autocomplete="off" placeholder="agent stack, team size, or biggest drift pain">
+      <label class="srOnly hpField">Website <input name="website" type="text" autocomplete="off" tabindex="-1"></label>
+      <button class="btn btnPrimary" type="submit" data-fast-goal="pilot_request" data-fast-goal-location="pricing">Request pilot &rarr;</button>
+      <p class="leadStatus" data-pilot-status aria-live="polite"></p>
+    </form>
+  </section>`;
 }
 
 function noteCard(date: string, title: string, body: string, href = "/blog"): string {
@@ -1401,12 +1464,48 @@ function checkoutSuccessPage(env: Env): string {
     <main class="doc">
       <p class="eyebrow">Checkout returned</p>
       <h1>Pro checkout received.</h1>
-      <p>Stripe returned successfully. The next backend bead should verify the session, store the entitlement, and issue or connect a Pro monitoring token for redacted run sync.</p>
-      <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
+      <p>Your subscription is now tied to the email used at checkout. Request the magic link for that email, open it, then create a workspace token for redacted sync.</p>
+      <div id="checkout-session-status" class="alert warning">Checking Stripe return status.</div>
+      <section class="resourceBox">
+        <h2>Send the account link</h2>
+        <form class="checkoutForm" data-magic-link-form>
+          <label class="srOnly" for="success-email">Checkout email</label>
+          <input id="success-email" name="email" type="email" autocomplete="email" placeholder="checkout email" required>
+          <button class="btn btnPrimary" type="submit">send magic link &rarr;</button>
+          <p class="checkoutStatus" data-magic-link-status aria-live="polite"></p>
+        </form>
+      </section>
+      <h2>After the link opens</h2>
+      <pre><code>POST ${escapeHTML(baseURL(env))}/api/workspaces
+Authorization: Bearer YOUR_SESSION_TOKEN
+
+POST ${escapeHTML(baseURL(env))}/api/tokens
+Authorization: Bearer YOUR_SESSION_TOKEN
+
+baseline sync on --url ${escapeHTML(baseURL(env))} \\
+  --token YOUR_WORKSPACE_TOKEN
 baseline sync push</code></pre>
-      <p><a class="button primary" href="/dashboard">Open dashboard</a></p>
+      <p><a class="button primary" href="/docs/mcp">Open setup docs</a></p>
     </main>
+    ${checkoutSuccessScript()}
     <script>window.datafast && window.datafast("checkout_return_success", { plan: "pro", provider: "stripe" });</script>
+  `);
+}
+
+function checkoutNeedsEmailPage(env: Env, plan: string): string {
+  return layout(env, {
+    title: "Baseline.ai Checkout Needs Email",
+    description: "Baseline checkout needs an email before starting Stripe so the account can be provisioned.",
+    path: "/api/checkout",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
+    <main class="doc">
+      <p class="eyebrow">Checkout paused</p>
+      <h1>Add an email before ${escapeHTML(plan)} checkout.</h1>
+      <p>Baseline attaches checkout to an account before sending you to Stripe. Use the pricing form so your entitlement, magic link, and workspace token can be created after payment.</p>
+      <p><a class="button primary" href="/#pricing">Return to pricing</a></p>
+    </main>
   `);
 }
 
@@ -1445,6 +1544,7 @@ function dashboardPage(env: Env): string {
         </div>
         <a class="button secondary" href="/docs/mcp">Connect MCP</a>
       </section>
+      <div id="dashboard-demo-banner" class="alert warning" hidden>Example data. Account-private Pro runs are visible only after authenticated account access.</div>
       ${dashboardVisual(true)}
       <section class="band two">
         <div class="panel"><h2>What changed since the last run?</h2><div id="changed-since-last"><div class="alert warning">Waiting for at least one synced Baseline run.</div></div></div>
@@ -1452,7 +1552,8 @@ function dashboardPage(env: Env): string {
         <div class="panel"><h2>Next operator action</h2><div id="next-action"><div class="alert warning">Loading recommended next step.</div></div></div>
         <div class="panel"><h2>Install-to-value path</h2><p>Use the local loop first. Pro history is useful only after the workstation is producing reviewed, redacted runs.</p><pre><code>baseline setup
 baseline report
-baseline accept RUN_ID --confirm "accept RUN_ID"
+baseline accept RUN_ID \\
+  --confirm "accept RUN_ID"
 baseline run
 baseline compare</code></pre></div>
         <div class="panel"><h2>Latest findings</h2><div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div></div>
@@ -1486,6 +1587,19 @@ function adminPage(env: Env): string {
         <section class="panel"><h2>Evaluate latest run</h2><p>Use the current JSON slug/version to evaluate the latest synced run.</p><button class="button secondary" id="run-evaluator" type="button">Evaluate latest run</button></section>
         <section class="panel"><h2>View evaluations</h2><p>Load recent evaluation records from the existing evaluations endpoint.</p><button class="button secondary" id="view-evaluations" type="button">View evaluations</button></section>
         <section class="panel"><h2>Recent leads</h2><p>List lead-magnet requests from the shared event table so resource conversions are actionable.</p><button class="button secondary" id="view-leads" type="button">View leads</button></section>
+        <section class="panel pilotPanel">
+          <h2>Invite pilot</h2>
+          <p>Grant a hand-held Pro or Team pilot, send the account magic link, and make a lead actionable today.</p>
+          <label for="pilot-email">Lead email</label>
+          <input id="pilot-email" type="email" autocomplete="email" placeholder="buyer@example.com">
+          <label for="pilot-plan">Plan</label>
+          <select id="pilot-plan">
+            <option value="pro">Pro pilot</option>
+            <option value="team">Team pilot</option>
+          </select>
+          <label class="checkLabel"><input id="pilot-grant" type="checkbox" checked> Grant pilot entitlement</label>
+          <button class="button primary" id="invite-pilot" type="button">Invite pilot</button>
+        </section>
       </div>
       <h2>Question set JSON</h2>
       <textarea id="question-set-json" spellcheck="false">${escapeHTML(JSON.stringify(defaultQuestionSet(), null, 2))}</textarea>
@@ -1606,39 +1720,102 @@ function dashboardVisual(live = false): string {
   `;
 }
 
+function checkoutSuccessScript(): string {
+  return `<script>
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("session_id") || "";
+      const statusBox = document.getElementById("checkout-session-status");
+      const form = document.querySelector("[data-magic-link-form]");
+      const emailInput = form && form.querySelector('input[name="email"]');
+      const status = form && form.querySelector("[data-magic-link-status]");
+      const button = form && form.querySelector("button");
+      const write = function(message){ if (status) status.textContent = message; };
+      const setBox = function(message, klass){
+        if (!statusBox) return;
+        statusBox.className = "alert " + klass;
+        statusBox.textContent = message;
+      };
+      if (sessionId) {
+        fetch("/api/checkout/session?session_id=" + encodeURIComponent(sessionId), { headers: { "accept": "application/json" } })
+          .then(function(resp){ return resp.json().then(function(body){ return { ok: resp.ok, body: body }; }); })
+          .then(function(result){
+            if (!result.ok) throw new Error(result.body && result.body.error || "session check failed");
+            const hint = result.body.entitlement_hint;
+            if (result.body.email_hint && emailInput) emailInput.value = result.body.email_hint;
+            setBox(hint && hint.monitoring_enabled ? "Stripe confirmed. Request your magic link below to create a workspace token." : "Stripe returned. If webhook processing is still pending, request the magic link and retry token creation after a minute.", hint && hint.monitoring_enabled ? "ok" : "warning");
+          })
+          .catch(function(){ setBox("Stripe returned. Request your magic link with the checkout email below.", "warning"); });
+      } else {
+        setBox("No session id was attached. Request your magic link with the checkout email below.", "warning");
+      }
+      form && form.addEventListener("submit", async function(event){
+        event.preventDefault();
+        if (!button || !emailInput) return;
+        const email = String(emailInput.value || "").trim();
+        if (!email) {
+          write("Enter the email used at checkout.");
+          return;
+        }
+        button.disabled = true;
+        write("Sending magic link...");
+        try {
+          const response = await fetch("/api/auth/magic-link", {
+            method: "POST",
+            headers: { "content-type": "application/json", "accept": "application/json" },
+            body: JSON.stringify({ email: email })
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "magic link failed");
+          window.datafast && window.datafast("magic_link_requested", { location: "checkout_success" });
+          write("Check that inbox for the Baseline account link. After opening it, create a workspace token from the account API.");
+        } catch (error) {
+          write(error && error.message ? String(error.message) : "Magic link could not be sent.");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    })();
+  </script>`;
+}
+
 function proAccountScript(): string {
   return `<script>
     (function(){
-      const form = document.querySelector("[data-checkout-form]");
-      const status = form && form.querySelector("[data-checkout-status]");
-      const button = form && form.querySelector("button");
+      document.querySelectorAll("[data-checkout-form]").forEach(function(form){
+      const status = form.querySelector("[data-checkout-status]");
+      const button = form.querySelector("button");
       const write = function(message){ if (status) status.textContent = message; };
-      form && form.addEventListener("submit", async function(event){
+      form.addEventListener("submit", async function(event){
         event.preventDefault();
         if (!button) return;
         const data = new FormData(form);
         const email = String(data.get("email") || "").trim();
+        const plan = String(form.getAttribute("data-plan") || "pro");
+        const price = String(form.getAttribute("data-price") || (plan === "team" ? "129" : "39"));
         if (!email) {
           write("Enter an email to open checkout.");
           return;
         }
         button.disabled = true;
         write("Opening Stripe checkout...");
-        window.datafast && window.datafast("checkout_start", { plan: "pro", price: "39", currency: "usd", location: "pricing_form" });
+        window.datafast && window.datafast("checkout_start", { plan: plan, price: price, currency: "usd", location: "pricing_form" });
         try {
           const response = await fetch("/api/checkout", {
             method: "POST",
             headers: { "content-type": "application/json", "accept": "application/json" },
-            body: JSON.stringify({ plan: "pro", email, successUrl: location.origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", cancelUrl: location.origin + "/checkout/cancel" })
+            body: JSON.stringify({ plan: plan, email, successUrl: location.origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", cancelUrl: location.origin + "/checkout/cancel" })
           });
           const payload = await response.json();
           if (!response.ok || !payload.url) throw new Error(payload.error || "checkout_failed");
-          window.datafast && window.datafast("checkout_redirect", { plan: "pro", provider: "stripe" });
+          window.datafast && window.datafast("checkout_redirect", { plan: plan, provider: "stripe" });
           window.location.assign(payload.url);
         } catch (error) {
-          write("Checkout is not configured yet. The local CLI is still free.");
+          const message = error && error.message ? String(error.message) : "Checkout could not start.";
+          write(message + " Email help@trackbaseline.com and keep the CLI running locally.");
           button.disabled = false;
         }
+      });
       });
     })();
   </script>`;
@@ -1662,12 +1839,15 @@ function dashboardScript(): string {
         const latestResp = await fetch("/api/runs/latest", { headers: { "accept": "application/json" } });
         const latest = await latestResp.json();
         const run = latest.run || {};
+        const demo = latest.configured === false || latest.demo === true || run.run_id === "demo_run";
+        const demoBanner = document.getElementById("dashboard-demo-banner");
+        if (demoBanner) demoBanner.hidden = !demo;
         const score = Number(run.health_score || 0);
         const checks = Array.isArray(run.checks) ? run.checks : [];
         const warnings = Number(run.warning_count == null ? checks.filter(function(check){ return check.status !== "ok"; }).length : run.warning_count);
         const duration = Number(run.duration_ms || 0);
         const status = text(run.status || "unknown");
-        setText("dashboard-summary", "Latest " + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
+        setText("dashboard-summary", (demo ? "Example " : "Latest ") + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
         setText("frame-run", "baseline " + shortRun(run.run_id));
         setText("frame-score", "score " + score);
         setText("health-score", String(score));
@@ -1756,6 +1936,14 @@ function adminScript(): string {
       document.getElementById("view-leads")?.addEventListener("click", async function(){
         try { write(await adminFetch("/api/admin/leads")); } catch (error) { write(error); }
       });
+      document.getElementById("invite-pilot")?.addEventListener("click", async function(){
+        try {
+          const email = document.getElementById("pilot-email")?.value || "";
+          const plan = document.getElementById("pilot-plan")?.value || "pro";
+          const pilot = document.getElementById("pilot-grant")?.checked !== false;
+          write(await adminFetch("/api/admin/invites", { method: "POST", body: JSON.stringify({ email, plan, role: "owner", pilot }) }));
+        } catch (error) { write(error); }
+      });
     })();
   </script>`;
 }
@@ -1831,11 +2019,47 @@ function layout(env: Env, meta: PageMeta, body: string): string {
             website: website && website.value ? website.value.trim() : ''
           };
           window.datafast && window.datafast('lead_magnet_request', { resource: payload.resource, location: location.pathname });
-          await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-          if (status) status.textContent = 'Request recorded. Use the worksheet above now; the lead queue has your pilot-prompt request.';
+          var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
+          var body = await response.json();
+          if (!response.ok) throw new Error(body && body.error || 'request_failed');
+          if (status) status.textContent = 'Request recorded. Use the worksheet above now; the follow-up request is in.';
           form.reset();
         } catch (error) {
           if (status) status.textContent = 'The worksheet is still here. Try again if you want the follow-up prompt.';
+        } finally {
+          if (button) button.disabled = false;
+        }
+      });
+    });
+    document.querySelectorAll('[data-pilot-form]').forEach(function(form){
+      form.addEventListener('submit', async function(event){
+        event.preventDefault();
+        var status = form.querySelector('[data-pilot-status]');
+        var button = form.querySelector('button[type="submit"]');
+        var email = form.querySelector('input[name="email"]');
+        var plan = form.querySelector('select[name="plan"]');
+        var context = form.querySelector('input[name="context"]');
+        var website = form.querySelector('input[name="website"]');
+        if (status) status.textContent = 'Recording pilot request...';
+        if (button) button.disabled = true;
+        try {
+          var payload = {
+            type: 'pilot_request',
+            path: location.pathname,
+            resource: 'pricing_pilot_request',
+            plan: plan && plan.value ? plan.value : 'pro',
+            email: email && email.value ? email.value.trim() : '',
+            context: context && context.value ? context.value.trim() : '',
+            website: website && website.value ? website.value.trim() : ''
+          };
+          window.datafast && window.datafast('pilot_request', { plan: payload.plan, location: location.pathname });
+          var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
+          var body = await response.json();
+          if (!response.ok) throw new Error(body && body.error || 'request_failed');
+          if (status) status.textContent = 'Pilot request recorded. Keep the local CLI handy; the invite path starts with a magic link.';
+          form.reset();
+        } catch (error) {
+          if (status) status.textContent = error && error.message ? String(error.message) : 'Pilot request could not be recorded.';
         } finally {
           if (button) button.disabled = false;
         }
@@ -1850,6 +2074,7 @@ function css(): string {
   return `
     :root { color-scheme: light; --ink:#071419; --graphite:#142124; --muted:#586569; --paper:#f3ebdc; --cream:#fff9ea; --line:#10191b; --court:#0e5960; --court-soft:#d6e7e4; --clay:#bb7357; --lime:#d9f45d; --blue:#2d6f9f; --green:#166b48; --amber:#a15c00; --red:#b42318; --shadow:5px 5px 0 #071419; --display:"Avenir Next Condensed","DIN Condensed","Franklin Gothic Condensed",Impact,sans-serif; --body:"Avenir Next","Gill Sans","Trebuchet MS",system-ui,sans-serif; --mono:"SFMono-Regular",Consolas,monospace; }
     * { box-sizing: border-box; }
+    [hidden] { display:none !important; }
     html { scroll-behavior:smooth; }
     body { margin:0; font-family:var(--body); color:var(--ink); background:repeating-linear-gradient(90deg, rgba(7,20,25,.045) 0 1px, transparent 1px 68px), repeating-linear-gradient(0deg, rgba(187,115,87,.08) 0 1px, transparent 1px 68px), var(--paper); letter-spacing:0; font-size:18px; line-height:1.5; overflow-x:clip; }
     a { color:inherit; text-decoration:none; }
@@ -1954,10 +2179,14 @@ function css(): string {
     .doc h1 { font-size:4rem; line-height:.95; }
     .doc h2 { border-top:3px solid var(--line); font-size:2.2rem; margin-top:40px; padding-top:28px; }
     .admin label { display:block; color:var(--muted); font-weight:900; margin:18px 0 8px; }
-    .admin input, .admin textarea { width:100%; border:2px solid var(--line); border-radius:8px; padding:12px; font:inherit; color:var(--ink); background:#fff; }
+    .admin input, .admin textarea, .admin select { width:100%; border:2px solid var(--line); border-radius:8px; padding:12px; font:inherit; color:var(--ink); background:#fff; }
     .admin textarea { min-height:430px; font-family:var(--mono); font-size:13px; line-height:1.45; resize:vertical; }
     .adminActions { margin:14px 0 26px; }
     .adminPanelGrid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; margin:24px 0; }
+    .checkLabel { display:flex !important; gap:10px; align-items:center; color:var(--ink) !important; }
+    .checkLabel input { width:auto; }
+    .pilotPanel .button { margin-top:12px; width:100%; }
+    #dashboard-demo-banner { margin:0 max(28px, calc((100vw - 1180px) / 2)) 18px; }
     .contentIndex { margin:18px 0 34px; }
     .contentIndex a em, .contentIndex article em { display:block; margin-top:16px; font-family:var(--mono); font-style:normal; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--court); }
     .contentIndex p { margin:0; font-size:14px; line-height:1.45; }
@@ -1970,8 +2199,9 @@ function css(): string {
     .leadCapture h2 { border-top:0; margin:8px 0 10px; padding-top:0; font-size:2rem; }
     .leadCapture p { margin:0; color:var(--fence); }
     .leadCapture form { display:grid; gap:10px; align-content:start; }
-    .leadCapture input { min-height:46px; border:2px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:12px 14px; font:800 1rem/1 var(--body); width:100%; }
+    .leadCapture input, .leadCapture select { min-height:46px; border:2px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:12px 14px; font:800 1rem/1 var(--body); width:100%; }
     .leadCapture .btn { width:100%; }
+    .pilotCapture { margin-top:28px; }
     .leadStatus { min-height:22px; font-size:12px; line-height:1.35; color:var(--ash); }
     footer { display:flex; flex-wrap:wrap; gap:20px; padding:30px max(20px, calc((100vw - 1180px) / 2)); color:var(--muted); border-top:3px solid var(--line); background:var(--paper); }
     :root { --bone:#ece2cf; --paper:#f5ede0; --paper-2:#faf4ea; --court:#b87560; --court-d:#8a4f3e; --sky:#8aa3ad; --sky-d:#5a747f; --fence:#2c3a42; --ink:#14110d; --ash:#6c6357; --line:#1a1612; --hairline:rgba(20,17,13,.14); --hairline-2:rgba(20,17,13,.08); --lime:#d9f45d; --green:#3d6b4a; --amber:#a15c00; --red:#b42318; --display:"Archivo","Archivo Narrow","Avenir Next Condensed","DIN Condensed",Impact,sans-serif; --body:"Archivo","Avenir Next",system-ui,sans-serif; --mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace; }
