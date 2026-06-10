@@ -6,9 +6,10 @@
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
 - Current Version ID: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
-- Current production source branch: `origin/main` at `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead34-main`
-- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, and the Claude Fable 5 anti-slop copy polish.
+- Current Deployment ID: `56391404-4f21-4b3f-b2fb-04a74aa29696`
+- Current production source branch: `origin/main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-prod-cf-deploy`
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, and Bead 35 `cf` deploy-tooling correction.
 
 ## Cloudflare CLI Policy
 
@@ -35,10 +36,65 @@ Operator correction: future Cloudflare deploy and readback work uses `cf`, not `
 
 Current active deployment readback:
 
-- Deployment ID: `36ecaeb4-2ef8-48dc-8f01-678378ca7c08`
+- Deployment ID: `56391404-4f21-4b3f-b2fb-04a74aa29696`
 - Worker version: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
 - Traffic: 100%
-- Created: `2026-06-10T07:43:13.078511Z`
+- Source: `api`
+- Created: `2026-06-10T08:29:54.585318Z`
+
+## 2026-06-10 `cf` Production Redeploy After PR #10
+
+After PR #10 (`https://github.com/apollostreetcompany/baseline/pull/10`) merged the `cf` deploy-tooling correction to `main`, the exact `origin/main` commit `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67` was redeployed through `cf`. The merged PR did not change `web/src`, `web/public`, or `web/wrangler.jsonc`, so the safe production action was to create a fresh deployment that routes 100% traffic to the already-live Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
+
+Deployment result:
+
+- Deployment ID: `56391404-4f21-4b3f-b2fb-04a74aa29696`
+- Source: `api`
+- Worker version: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
+- Traffic: 100%
+- Created: `2026-06-10T08:29:54.585318Z`
+- Source branch: `origin/main`.
+- Source commit: `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`.
+
+Validation:
+
+```sh
+gh pr view 10 --json number,state,mergedAt,mergeCommit,url,headRefName,baseRefName
+git diff --name-only cda91d1b3d3a8244cd8a11424ea39f963d8dc14b..HEAD -- web/src web/public web/wrangler.jsonc web/package.json Makefile docs/DEPLOYMENT.md CONTINUITY.md HANDOFF.md MISTAKES.md handoff/beads.jsonl
+make verify-all
+git diff --check
+npm --prefix web audit --audit-level=high
+npm --prefix web run deploy
+cf auth whoami
+cf workers deployments list --script-name baseline-ai
+cf workers deployments create --script-name baseline-ai --dry-run --body '{"strategy":"percentage","versions":[{"version_id":"d313f92f-bb02-47b0-81ec-8d571dc61ed7","percentage":100}]}'
+cf workers deployments create --script-name baseline-ai --body '{"strategy":"percentage","versions":[{"version_id":"d313f92f-bb02-47b0-81ec-8d571dc61ed7","percentage":100}]}'
+cf workers deployments get 56391404-4f21-4b3f-b2fb-04a74aa29696 --script-name baseline-ai
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://www.trackbaseline.com/api/health
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
+curl -fsS https://trackbaseline.com/ | rg -o "Know when your coding agent quietly changed|Copy install command|Sample data"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -o "Remote MCP sequence|baseline serve mcp|trackbaseline.com/mcp"
+curl -sS -i -X POST https://trackbaseline.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+curl -sS -i https://trackbaseline.com/api/admin/leads
+```
+
+Results:
+
+- PR #10 was merged into `main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`.
+- Diff since the previously deployed app commit touched deployment docs/process files only; `web/src`, `web/public`, and `web/wrangler.jsonc` were unchanged.
+- `make verify-all`, `git diff --check`, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- `npm --prefix web run deploy` intentionally exited with the guard instructing operators to use the documented `cf` workflow.
+- `cf workers deployments list` and `cf workers deployments get` confirmed deployment `56391404-4f21-4b3f-b2fb-04a74aa29696`, source `api`, Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`, 100% traffic.
+- Live health returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true` on apex, `www`, and workers.dev fallback.
+- Live homepage and MCP docs markers passed.
+- Live unauthenticated `POST /mcp` returned HTTP `401` with `WWW-Authenticate` and `authentication_required`.
+- Live unauthenticated `/api/admin/leads` returned HTTP `401` with `invalid admin token`.
+
+Rollback:
+
+- Preferred code rollback target remains previous Fable copy polish Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
+- Deployment-level rollback uses `cf workers deployments create --script-name baseline-ai --dry-run --body 'REVIEWED_ROLLBACK_BODY'`, then repeats without `--dry-run` after verifying the body.
 
 ## 2026-06-10 Current Main Production Redeploy
 
