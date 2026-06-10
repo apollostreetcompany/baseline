@@ -12,6 +12,7 @@ Build Baseline.ai as a local-first agent workstation monitor for coding agents. 
 cmd/baseline/              Go CLI entrypoint
 internal/baseline/         CLI, MCP server, SQLite, scheduling, sync, probes
 openclaw-plugin/           Plugin bundle and baseline-health skill
+plugins/baseline/          Codex plugin bundle, MCP config, and baseline-health skill
 package/                   npm wrapper package
 web/src/index.ts           Cloudflare Worker app, landing, dashboard, APIs
 web/schema.sql             Neon schema reference

@@ -1,7 +1,7 @@
 # CONTINUITY.md - Baseline.ai
 
 ## Goal (incl. success criteria)
-Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Success is a working local check/known-good/compare loop, OpenClaw MCP install, redacted cloud sync, landing page, dashboard, payment hook, validation notes, and clear launch blockers.
+Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for coding-agent workstations, plus a deployed Cloudflare/Neon launch surface. Current Bead 34 success is an integrated first-customer path: public website clarity, SEO/lead resources, pilot request, admin invite, paid checkout, magic-link onboarding, workspace token, redacted sync, and account-private history.
 
 ## Constraints/Assumptions
 - Git remote `origin` is configured as `https://github.com/apollostreetcompany/baseline.git`.
@@ -39,6 +39,14 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Bead 29 distribution decision: keep the local CLI binary free and easy to install; charge Pro for hosted history, workspace tokens, remote MCP account operations, monitoring, billing lifecycle, and retention. The first public download path is GitHub Releases plus `https://trackbaseline.com/install.sh`, with npm as an auto-downloading wrapper and Homebrew as a later tap.
 - Bead 30 analytics decision: use DataFast for launch funnel tracking with client-side script plus click/scroll goals; keep tokens out of files and use `DATAFAST_TOKEN` only in shell/secret storage for CLI reports.
 - Bead 31 favicon decision: use the existing `baseline-court-robot.png` photo as the source for browser/app icons so the tab icon matches the launch imagery rather than adding a separate logo mark.
+- Bead 32 Codex plugin decision: keep `openclaw-plugin/` as the legacy/OpenClaw compatibility bundle and introduce `plugins/baseline/` as the release-oriented Codex plugin. The v1 plugin is valid for local Codex development when the `baseline` CLI is already on `PATH`; productionization still needs CLI auto-install/preflight, clean-environment Codex smoke tests, plugin assets, and CI-backed schema validation.
+- Bead 33 entry gate: focus on MARKET EFFECTIVENESS ONLY. Scope is organic acquisition via 5-10 SEO/AEO blog posts, 3-5 lead magnets attached to the public surface, dashboard/admin UX clarity, and package/core changes that support install-to-value. Risk class is High because deploy/runtime and public web/API surfaces may be touched. Agent path: Architect/strategy synthesis by primary Codex, fresh skill-specific RepoPrompt subagents, domain implementation by engineer agents or primary Codex as needed, then Proconsult and subreview advisory review before deploy.
+- Bead 33 market decision: own the "local coding-agent health/drift/MCP workstation check" wedge instead of broad LLM observability. Ship eight guide routes, five resource/lead-magnet routes, an actionable lead queue, live Klaviyo lead/master events when configured, clearer dashboard/admin next-action UX, and `baseline --version` as a first-run smoke.
+- Bead 33 deployment decision: deployed Cloudflare Worker version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8` to `https://trackbaseline.com`; rollback target is previous version `b4f73e11-7540-4e97-8112-7698467b0484`. Wrangler deploy requires the Cloudflare account/token env values to be sourced; an unsourced OAuth token failed with Cloudflare `Authentication error [code: 10000]`.
+- Bead 34 commercial viability decision: treat first paid customer conversion as a hand-held paid-pilot/account-provisioning problem, not only an SEO/content problem. The public path now captures pilot requests, paid checkout requires email-first account attribution, checkout success requests the magic link and shows token/sync steps, admin can grant a Pro/Team pilot invite, public demo/dashboard surfaces avoid exposing account-private runs, and Stripe webhooks fall back through customer/email before granting entitlement.
+- Bead 34 deployment decision: deployed Cloudflare Worker version `7940fc3a-f89e-4972-9352-e77424b541a6` to `https://trackbaseline.com`. Rollback target is previous Bead 33 version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`. Live admin lead readback remains `UNCONFIRMED` from this shell because the local deploy env has Cloudflare credentials but not `BASELINE_ADMIN_TOKEN`.
+- Bead 34 website clarity integration decision: do not deploy `codex/feat/bead-34-website-clarity` directly because it was based before Bead 33/34 commercial work. Integrate its public copy, sample-data labels, copyable command blocks, field-note blog, metadata, robots, and sitemap improvements onto the commercial-viability branch so production does not lose lead magnets, pilot capture, checkout onboarding, admin conversion, or account-private run safeguards.
+- Bead 34 integration deployment decision: deployed Cloudflare Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` from `codex/feat/bead-34-website-production-integration`. Rollback target is previous commercial-viability version `7940fc3a-f89e-4972-9352-e77424b541a6`.
 
 ## State
 ### Done
@@ -74,8 +82,16 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - [x] Bead 29: Added the public distribution path (`install.sh`, GitHub Release workflow, npm auto-download wrapper), configured production Stripe/Klaviyo/auth/token secrets, deployed Worker version `e38523fc-d11a-41d9-b05e-6dcef5f4b5f0`, and published GitHub Release `v0.1.0`.
 - [x] Bead 30: Added DataFast script and launch funnel events, created DataFast install/Pro funnels with the CLI, added `make analytics-report`, and deployed Worker version `fb899682-a797-4201-9842-4dfb72d5cecd`.
 - [x] Bead 31: Added robot photo favicon/app icon assets, wired icon metadata and web manifest, and deployed Worker version `b4f73e11-7540-4e97-8112-7698467b0484`.
+- [x] Bead 32: Added a validated Codex plugin v1 under `plugins/baseline/`, repo-local marketplace metadata, `baseline-codex-plugin.tgz` release packaging, plugin validation target, and productionization roadmap.
+- [x] Bead 33: Added an SEO/AEO content and lead-magnet acquisition surface, lead request capture/notification/admin queue, dashboard/admin market clarity, CLI version smoke, docs/package first-run guidance, and deployed Worker version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
+- [x] Bead 34: Added commercial viability fixes from subreview: pilot request capture, admin pilot invite, email-first Pro/Team checkout, operational checkout success onboarding, scoped checkout-session status, account-safe public dashboard APIs, account-scoped run upsert protection, and paid-pilot deployment docs.
+- [x] Bead 34: Integrated the public website clarity pass onto the commercial viability branch, preserving Bead 33/34 revenue paths while adding clearer local CLI/MCP positioning, setup -> run -> accept -> compare copy, copyable commands, field-note blog sections, sample-data labels, and metadata/robots/sitemap cleanup.
 
 ### Now
+- Bead 34 integration is deployed from sibling worktree `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on branch `codex/feat/bead-34-website-production-integration`, based on deployed commercial-viability commit `8cdbae6` with the public website clarity commit `9b0e90e` ported on top. Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` is live on `https://trackbaseline.com`.
+- Bead 34 integration validation passed: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high` (known moderate Wrangler/Miniflare `ws` chain only), local Worker route smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, `/sitemap.xml`, `/checkout/success`, and `/admin`; live smokes for health, homepage, docs, blog, dashboard, checkout success, admin, robots, sitemap, and unauthenticated `/mcp` challenge.
+- Bead 34 commercial acceptance tests previously passed: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local Worker smokes for `/`, `/checkout/success`, `/api/checkout`, `/api/events`, `/admin`, `/dashboard`, `/api/runs/latest`, Playwright screenshots for pricing/pilot, checkout success, admin pilot, and dashboard demo, Wrangler deploy, and live smokes for health, homepage markers, checkout success markers, email-required checkout guard, invalid lead guard, and synthetic pilot request storage. `subreview` completed partially: Claude completed with 14 findings; Codex failed on CLI argument incompatibility; Gemini quota was exhausted. Acted on the short-path commercial findings.
+- Branch `codex/feat/bead-32-codex-plugin` contains the first Codex plugin v1. `make plugin-validate`, `make test`, `make package-test`, `make web-typecheck`, JSON/path checks, shell syntax checks, and temp `DIST_DIR` release build all pass locally.
 - `https://trackbaseline.com` is the canonical share URL for later today. `https://www.trackbaseline.com` and `https://baseline-ai.ryan-borker.workers.dev` also serve the Worker.
 - Public install works through `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release `v0.1.0` assets and checksums. The npm wrapper can auto-download the same release, but the npm package is not published yet because this machine is not logged into npm.
 - CI now includes a macOS `verify` workflow for PRs, and local `make mac-build` uses Swift strict concurrency to match GitHub's Swift 6 behavior.
@@ -94,6 +110,7 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 ### Next
 - End-to-end Pro pilot smoke with a real invited account: checkout, webhook entitlement, magic-link login, workspace token creation, redacted sync, history/hotspot/compare, and remote MCP account status.
 - Publish `@baseline-ai/cli` once npm auth for the `@baseline-ai` scope is available; the package is ready and `npm pack --dry-run` passes.
+- Productionize the Codex plugin: add missing-CLI preflight/auto-install, vendor or officialize plugin schema validation in CI, add icon/logo/screenshots, smoke in a clean Codex install, and publish `baseline-codex-plugin.tgz` with the next release.
 - Create a Homebrew tap for persistent macOS installs after the first pilot users validate the install script.
 - Later sequence: app-level retention enforcement, OpenClaw runner pack, MCP schema drift testing against target clients, local scheduling, local alert preview, OpenProse contract migration, 10-user paid pilot, package boundary refactor.
 
@@ -109,6 +126,24 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - Should the recipe library be migrated in place to OpenProse 0.13.1 contract frontmatter, or should compatibility mode remain supported for older `.prose.md` recipes?
 
 ## Working Set
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/web/src/index.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/web/src/cloud.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-pricing-pilot.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-checkout-success.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-admin-pilot.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability/handoff/bead-34-dashboard-demo.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/web/src/index.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/docs/DEPLOYMENT.md`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/handoff/bead-33-blog.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/handoff/bead-33-dashboard.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/handoff/bead-33-lead-resource-final.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/handoff/bead-33-admin-final.png`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/web/src/cloud.ts`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/package`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/internal/baseline`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-33-seo-lead-magnets/plugins/baseline`
 - `/Users/future/.openclaw/workspace/repos/skills-library/recipes/00-kill-gate.prose.md`
 - `/Users/future/.openclaw/workspace/repos/skills-library/recipes/03-offer-smoke-test.prose.md`
 - `/Users/future/.openclaw/workspace/repos/skills-library/skills/app-intel`
@@ -126,6 +161,10 @@ Build Baseline.ai v0 as a local-first Go/SQLite CLI and MCP drift checker for co
 - `/Users/future/dev/baseline/docs/DEPLOYMENT.md`
 - `/Users/future/dev/baseline/package`
 - `/Users/future/dev/baseline/openclaw-plugin`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/plugins/baseline`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/.agents/plugins/marketplace.json`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/docs/CODEX_PLUGIN.md`
+- `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline/scripts/validate-codex-plugin.sh`
 - `/Users/future/dev/baseline/docs/VALIDATION.md`
 - `/Users/future/dev/baseline/docs/SKILL_USAGE.md`
 - `/Users/future/dev/baseline/docs/OPENPROSE_RUN_RESULTS.md`

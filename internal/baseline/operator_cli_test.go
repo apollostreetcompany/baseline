@@ -7,6 +7,39 @@ import (
 	"time"
 )
 
+func TestMainPrintsVersionForLongFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Main([]string{"--version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected version success, code=%d stderr=%s", code, stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "baseline 0.1.0"; got != want {
+		t.Fatalf("version output mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestMainPrintsVersionForShortFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Main([]string{"-v"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected version success, code=%d stderr=%s", code, stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "baseline 0.1.0"; got != want {
+		t.Fatalf("version output mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestMainPrintsVersionForCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Main([]string{"version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected version success, code=%d stderr=%s", code, stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "baseline 0.1.0"; got != want {
+		t.Fatalf("version output mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestRunCLIStartsLongNonInteractiveRunsInBackground(t *testing.T) {
 	t.Setenv("BASELINE_HOME", t.TempDir())
 	t.Setenv("BASELINE_ASYNC_EXE", "/bin/echo")

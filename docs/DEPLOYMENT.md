@@ -5,10 +5,10 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `0d0924c3-5c8e-4029-9327-369a73588786`
-- Current production source branch: `codex/deploy/trackbaseline-domain`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline`
-- Notes: current production combines the Bead 25 cloud account/remote MCP surface with the Bead 27 `landing-a` homepage redesign and Bead 28 `trackbaseline.com` custom-domain triggers.
+- Current Version ID: `214cec6e-a79d-4360-8aa3-a19e2eb42939`
+- Current production source branch: `codex/feat/bead-34-website-production-integration`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration`
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, and the Bead 34 public website clarity pass.
 
 ## 2026-05-14 Cloudflare Deploy
 
@@ -132,7 +132,100 @@ Rollback:
 - Cloudflare Workers rollback to the previous deployment version from Wrangler or the Cloudflare dashboard.
 - If a schema bug is found, leave additive tables in place and rollback Worker code. Do not drop account/billing tables without explicit data-retention approval.
 
+## 2026-06-10 Commercial Viability Gate
+
+Bead 34 closes the first-customer gaps found by `subreview`:
+
+- `/checkout/success` is now an onboarding bridge: it checks the returned Stripe session, requests a magic link for the checkout email, and shows the workspace-token / `baseline sync on` path.
+- `/api/checkout/session` resolves the actual Stripe session and scopes entitlement hints to that session/account. It no longer returns the latest global entitlement.
+- Paid checkout now requires email before Stripe session creation. Payment links are disabled for onboarding because they cannot guarantee account metadata and entitlement provisioning.
+- Team checkout uses the same email-first form as Pro.
+- Stripe webhook completion falls back from checkout metadata to known Stripe customer row, then to Stripe customer email, before granting entitlement.
+- `/admin` includes an "Invite pilot" panel that calls `POST /api/admin/invites` with optional pilot entitlement.
+- Public pricing includes a `pilot_request` form; `/api/admin/leads` returns both lead-magnet and pilot requests with pagination.
+- Public `/api/runs/latest` and `/api/runs/timeline` exclude account-private Pro runs; dashboard demo rows are labeled as examples.
+
+Required paid-pilot smoke:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -sS -X POST https://trackbaseline.com/api/checkout \
+  -H 'content-type: application/json' \
+  --data '{"email":"pilot@example.com","plan":"pro"}'
+curl -sS -X POST https://trackbaseline.com/api/events \
+  -H 'content-type: application/json' \
+  --data '{"type":"pilot_request","email":"pilot@example.com","plan":"pro","context":"checkout smoke"}'
+curl -i -sS "https://trackbaseline.com/api/admin/leads" \
+  -H "authorization: Bearer REDACTED_ADMIN_TOKEN"
+```
+
+Klaviyo verification before announcing paid pilot:
+
+- `Baseline Lead Magnet Requested` flow sends the promised resource follow-up or pilot prompt.
+- `Baseline Pilot Requested` notifies the operator and/or starts the manual pilot follow-up.
+- `Baseline Magic Link` sends account login links for invites and checkout success.
+- `Baseline Subscription Started` sends the paid onboarding email with the magic link when configured.
+
+Rollback:
+
+- Previous deployed Bead 33 version: `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
+- Roll back Worker code from Cloudflare Workers versions if checkout/session behavior blocks production.
+- Database changes are additive or query-only; do not drop lead/account/billing tables during rollback.
+
+Bead 34 deployment result:
+
+- Worker version `7940fc3a-f89e-4972-9352-e77424b541a6` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Live `/api/health` returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live homepage exposes example scoreboard copy, Team email-first checkout form, and `/#pilot-request`.
+- Live `/checkout/success?session_id=cs_test_fake` renders the magic-link and workspace-token onboarding path; `/api/checkout/session` correctly fails closed without a real Stripe session/secret context.
+- Live `GET /api/checkout?plan=team` returns a human-readable email-required page instead of creating an unattributed Stripe session.
+- Live `POST /api/events` rejects `pilot_request` without a valid email and accepts a synthetic `codex-smoke+bead34@example.com` pilot request with Klaviyo configured.
+- Protected `/api/admin/leads` returned `401` from this shell because the local deploy env did not contain `BASELINE_ADMIN_TOKEN`; unauthenticated rejection was verified, but live lead readback remains to be confirmed with the operator/admin token.
+
+## 2026-06-10 Website Clarity + Commercial Viability Integration Deploy
+
+The standalone website-clarity branch was based before Bead 33/34 commercial work, so it was not deployed directly. The integration branch starts from deployed commit `8cdbae6` and ports the website clarity commit `9b0e90e944520346c494585169f8131d32b3e111` onto the current lead-magnet, pilot, checkout, admin, and account-private run surface.
+
 Deployment result:
+
+- Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Source branch: `codex/feat/bead-34-website-production-integration`.
+- Source commit before deploy receipt: `bab5eed`.
+
+Validation:
+
+```sh
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Know when your coding agent quietly changed|First local baseline|pilot-request"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Setup -&gt; run -&gt; accept -&gt; compare|First Good Baseline"
+curl -fsS https://trackbaseline.com/blog | rg -n "Field notes for agent operators|Lead resources"
+curl -fsS https://trackbaseline.com/dashboard | rg -n "Example data|Install-to-value path"
+curl -fsS https://trackbaseline.com/checkout/success | rg -n "send magic link|baseline sync on"
+curl -fsS https://trackbaseline.com/admin | rg -n "Invite pilot|view-leads"
+curl -fsS https://trackbaseline.com/robots.txt | rg -n "Disallow: /admin|Disallow: /api/"
+curl -fsS https://trackbaseline.com/sitemap.xml | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard"
+curl -i -sS https://trackbaseline.com/mcp \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Results:
+
+- `make verify`, `git diff --check`, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- Live `/api/health` returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live homepage plainly explains Baseline as a local CLI/MCP checker and shows the setup -> run -> accept -> compare loop.
+- Live docs include copyable command blocks; live blog contains field-note sections plus the guide/resource index.
+- Live dashboard labels example data, and live admin/checkout success preserve the pilot invite and paid onboarding paths.
+- Live `/mcp` unauthenticated smoke returned `401` with `authentication_required`.
+
+Rollback:
+
+- Preferred rollback target: previous commercial-viability Worker version `7940fc3a-f89e-4972-9352-e77424b541a6`.
+
+Bead 25 deployment result:
 
 - First deploy version `c8adbd91-0139-461a-953c-91b76c9085be` succeeded but uploaded an untracked `.DS_Store` static asset from `web/public`.
 - `.DS_Store` was added to `.gitignore`, the stray local metadata files were removed, and the Worker was redeployed.
@@ -295,6 +388,7 @@ Release preflight:
 
 ```sh
 make verify-all
+make plugin-validate
 bash scripts/build-release.sh
 ls dist
 ```
@@ -533,3 +627,72 @@ Smoke result:
 - Score: `90`
 - Status: `warning`
 - Cloud synced: `true`
+
+## 2026-06-01 Bead 33 SEO and Lead Magnet Deploy
+
+Bead 33 deploys the market-acquisition surface:
+
+- `/blog` is now a content index, not a stub.
+- Eight guide routes are live under `/guides/...`.
+- Five lead-magnet routes are live under `/resources/...`.
+- Lead-magnet requests post to `/api/events`, emit Klaviyo lead/master events when lifecycle email is configured, and are queryable through protected `/api/admin/leads`.
+- `/dashboard`, `/admin`, and checkout return pages remain `noindex,follow` and are omitted from `/sitemap.xml`.
+
+Preflight:
+
+```sh
+make verify
+make plugin-validate
+go run ./cmd/baseline --version
+go run ./cmd/baseline version
+cd web && npm run typecheck
+```
+
+Local route smoke:
+
+```sh
+cd web
+npm run dev -- --port 8787
+curl -fsS http://localhost:8787/blog | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard|Guides and resources"
+curl -fsS http://localhost:8787/resources/agent-drift-scorecard | rg -n "Request pilot prompt|lead_magnet_request|canonical|CreativeWork"
+curl -fsS http://localhost:8787/sitemap.xml | rg -n "/guides/|/resources/"
+curl -fsS -X POST http://localhost:8787/api/events -H 'content-type: application/json' --data '{"type":"lead_magnet_request","path":"/resources/agent-drift-scorecard","resource":"/resources/agent-drift-scorecard","email":"test@example.com","context":"codex mcp drift"}'
+```
+
+Deploy:
+
+```sh
+cd web
+set -a; source /path/to/deploy.env; set +a
+wrangler deploy
+```
+
+The first deploy attempt with unsourced Wrangler/OAuth auth failed with Cloudflare API `Authentication error [code: 10000]` because the token did not match `web/wrangler.jsonc` account `3a0bfe287d4dfb27f802ee5d7e4b21e1`. Retrying with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` sourced from the operator env succeeded.
+
+Live deploy:
+
+- Worker version: `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`
+- URLs: `https://trackbaseline.com`, `https://www.trackbaseline.com`, `https://baseline-ai.ryan-borker.workers.dev`
+
+Live smoke:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/blog | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard|Guides and resources"
+curl -fsS https://trackbaseline.com/resources/agent-drift-scorecard | rg -n "Request pilot prompt|lead_magnet_request|canonical|CreativeWork"
+curl -fsS https://trackbaseline.com/sitemap.xml | rg -n "/guides/|/resources/"
+curl -fsS -X POST https://trackbaseline.com/api/events -H 'content-type: application/json' --data '{"type":"lead_magnet_request","path":"/resources/agent-drift-scorecard","resource":"/resources/agent-drift-scorecard","email":"smoke+bead33@trackbaseline.com","context":"deploy smoke"}'
+curl -sS -i https://trackbaseline.com/api/admin/leads | sed -n '1,8p'
+```
+
+Results:
+
+- Health returned `db:true`, `stripe:true`, `token_required:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Blog index, resource page, canonical URL, CreativeWork JSON-LD, and lead-magnet request CTA served live.
+- Sitemap included `/guides/...` and `/resources/...` and omitted `/dashboard`, `/admin`, and checkout return pages.
+- Synthetic lead POST returned `{"ok":true}`.
+- Unauthenticated `/api/admin/leads` returned `401`, confirming the lead queue is protected.
+
+Rollback:
+
+- Preferred rollback: `cd web && wrangler rollback b4f73e11-7540-4e97-8112-7698467b0484` to return to the immediately previous pre-Bead-33 Worker version listed by `wrangler deployments list --name baseline-ai`.

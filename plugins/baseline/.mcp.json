@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "baseline": {
+      "command": "baseline",
+      "args": [
+        "serve",
+        "mcp"
+      ]
+    }
+  }
+}

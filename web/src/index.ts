@@ -67,6 +67,218 @@ type CanonicalQuestionSet = {
   }>;
 };
 
+type PublicPageKind = "article" | "lead_magnet";
+
+type PageMeta = {
+  title: string;
+  description: string;
+  path: string;
+  canonical?: string;
+  ogImage?: string;
+  noindex?: boolean;
+  structuredData?: string;
+};
+
+type ContentPage = {
+  path: string;
+  title: string;
+  description: string;
+  kind: PublicPageKind;
+  eyebrow: string;
+  heading: string;
+  lede: string;
+  audience: string;
+  updated: string;
+  points: string[];
+  checklist: string[];
+  cta: string;
+};
+
+const CONTENT_PAGES: ContentPage[] = [
+  {
+    path: "/guides/coding-agent-health-check",
+    title: "Coding Agent Health Check Guide | Baseline.ai",
+    description: "A practical coding agent health check for memory, repo awareness, MCP visibility, latency, safety, and style drift.",
+    kind: "article",
+    eyebrow: "Guide / agent health",
+    heading: "How to run a coding agent health check before work drifts.",
+    lede: "Use this when an agent feels slower, forgetful, or less aware of the repository than it was yesterday.",
+    audience: "Founder-CTOs, agency owners, and staff engineers running local coding-agent workstations.",
+    updated: "2026-06-01",
+    points: ["Trusted comparison: Start from a reviewed Good Baseline so every later run has a concrete reference point.", "Real failure modes: Check memory, repo awareness, MCP visibility, latency, safety, instruction following, and style because those are the drifts operators actually feel.", "Next action: Treat warnings as prompts to inspect, rerun, repair setup, or accept a new clean state."],
+    checklist: ["Run baseline setup after installing the CLI.", "Run baseline run from the real workspace.", "Open baseline report and inspect warnings.", "Accept only a reviewed run as the Good Baseline.", "Compare later runs before blaming the model."],
+    cta: "Install Baseline and run your first health check."
+  },
+  {
+    path: "/guides/agent-drift-detection",
+    title: "Agent Drift Detection for Coding Workstations | Baseline.ai",
+    description: "Detect coding agent drift across memory, tools, latency, safety, and style before it costs a development day.",
+    kind: "article",
+    eyebrow: "Guide / drift detection",
+    heading: "Detect agent drift before it becomes a lost day.",
+    lede: "Agent drift shows up as stale context, slower tools, changed tone, or weaker repo awareness before it shows up as a complete failure.",
+    audience: "Teams that need to know when a session no longer behaves like the accepted baseline.",
+    updated: "2026-06-01",
+    points: ["Behavior first: Drift is not just a model-score problem; measure the workstation behavior you depend on.", "Repeatable probes: Run the same checks over time so score, warning count, duration, and per-check status become comparable.", "Privacy boundary: Keep raw prompts local and sync only redacted summaries when Pro history is enabled."],
+    checklist: ["Track score and status per run.", "Compare warning counts across runs.", "Look for changed MCP/tool visibility.", "Inspect slow checks before changing prompts.", "Document whether the new state should be accepted."],
+    cta: "Compare today’s run against your last Good Baseline."
+  },
+  {
+    path: "/guides/mcp-server-health-check",
+    title: "MCP Server Health Check for Coding Agents | Baseline.ai",
+    description: "Verify MCP server visibility, tool count, setup, scrub preview, and recovery paths for local coding agents.",
+    kind: "article",
+    eyebrow: "Guide / MCP health",
+    heading: "Run an MCP server health check without adding tool sprawl.",
+    lede: "When an MCP server disappears or advertises the wrong surface, agents keep working with less context.",
+    audience: "Operators maintaining OpenClaw or Codex MCP configurations for local development workstations.",
+    updated: "2026-06-01",
+    points: ["Binary first: Verify the Baseline CLI, then run doctor, then check the client MCP configuration.", "Seven local tools: Keep the advertised surface to setup, run, doctor, report, accept, schedule, and scrub preview.", "Local versus remote: Use local MCP for workstation checks and remote Pro MCP only for authenticated cloud history."],
+    checklist: ["Install the CLI before configuring MCP.", "Run baseline doctor for local preflight.", "Confirm the MCP command is baseline serve mcp.", "Confirm the local tool count remains seven.", "Use scrub preview before enabling redacted sync."],
+    cta: "Follow the MCP installation guide and verify the seven-tool surface."
+  },
+  {
+    path: "/guides/openclaw-agent-monitoring",
+    title: "OpenClaw Agent Monitoring Guide | Baseline.ai",
+    description: "Monitor OpenClaw coding agent health with local Baseline runs, Good Baseline acceptance, and MCP recovery checks.",
+    kind: "article",
+    eyebrow: "Guide / OpenClaw",
+    heading: "Monitor OpenClaw from the workstation outward.",
+    lede: "OpenClaw operators need a fast local signal that the agent, repo, MCP setup, and memory path still match the accepted working state.",
+    audience: "OpenClaw users running daily coding-agent sessions across real repositories.",
+    updated: "2026-06-01",
+    points: ["Real workspace: Run setup inside the repository you actually use so local SQLite state and the first report are meaningful.", "Reviewed acceptance: Accept deliberately after reviewing the report; the latest run is not automatically the Good Baseline.", "Harness drift: Watch for stripped PATH, stale MCP config, redacted key placeholders, missing tools, and slow probes."],
+    checklist: ["Run from the intended workspace directory.", "Keep OpenClaw MCP configured to baseline serve mcp.", "Poll reports for long runs instead of holding agent turns open.", "Inspect warning checks before accepting.", "Use Pro history only for redacted summaries."],
+    cta: "Install Baseline and run an OpenClaw health check locally."
+  },
+  {
+    path: "/guides/codex-agent-monitoring",
+    title: "Codex Agent Monitoring Guide | Baseline.ai",
+    description: "Monitor Codex coding-agent sessions with local health checks, MCP setup, drift reports, and known-good run comparison.",
+    kind: "article",
+    eyebrow: "Guide / Codex",
+    heading: "Monitor Codex sessions with a local known-good loop.",
+    lede: "Codex-heavy workflows need a quick answer to whether the agent still sees the repo, follows the tool contract, and behaves like the accepted baseline.",
+    audience: "Codex users and teams packaging local plugin/MCP workflows around real repositories.",
+    updated: "2026-06-01",
+    points: ["Workstation signal: Measure tool visibility, repo state, context, latency, and configuration instead of blaming the model first.", "Local runner: Use the plugin as a small wrapper around the installed Baseline CLI.", "Known-good loop: Promote reviewed runs so future sessions compare against a state someone actually inspected."],
+    checklist: ["Install the Baseline CLI first.", "Verify baseline doctor succeeds.", "Use baseline run for a current health check.", "Review baseline report before accepting.", "Keep the MCP tool surface to seven local tools."],
+    cta: "Use Baseline as the local health layer for Codex agent work."
+  },
+  {
+    path: "/guides/good-baseline-workflow",
+    title: "Good Baseline Workflow for Coding Agents | Baseline.ai",
+    description: "A step-by-step Good Baseline workflow for accepting, comparing, and updating known-good coding agent runs.",
+    kind: "article",
+    eyebrow: "Guide / Good Baseline",
+    heading: "The Good Baseline is a review ritual, not a score badge.",
+    lede: "A Good Baseline gives operators a trusted reference point that was inspected, accepted, and used for future comparison.",
+    audience: "Solo founders and engineering teams that need a simple ritual for agent workstation trust.",
+    updated: "2026-06-01",
+    points: ["Clean starting point: Establish a first run when the workstation is known to be healthy.", "Review before accept: Inspect warnings, latency, memory, tool visibility, and repo state before accepting.", "Explicit confirmation: Accept with the confirmation string and compare later runs against that state."],
+    checklist: ["baseline setup", "baseline run", "baseline report", "baseline accept RUN_ID --confirm \"accept RUN_ID\"", "baseline compare"],
+    cta: "Create your first reviewed Good Baseline today."
+  },
+  {
+    path: "/guides/ai-agent-memory-regression",
+    title: "AI Agent Memory Regression Guide | Baseline.ai",
+    description: "Identify AI agent memory regression with repeated local probes, project-awareness checks, and known-good comparison.",
+    kind: "article",
+    eyebrow: "Guide / memory regression",
+    heading: "Catch memory regression when it is still subtle.",
+    lede: "Memory regression often appears as forgotten project context, stale constraints, repeated questions, or changed behavior across sessions.",
+    audience: "Operators who need agents to retain project context and respect durable workflow constraints.",
+    updated: "2026-06-01",
+    points: ["Confidence is not memory: An agent can sound right while forgetting the project.", "Same-workspace comparison: Compare today’s memory behavior to a known-good run in the same repository.", "Setup before prompts: Confirm workspace, MCP tools, launch environment, and local config before changing prompt strategy."],
+    checklist: ["Run identical memory probes over time.", "Check project-awareness responses.", "Verify MCP and repo context are available.", "Compare warnings against the Good Baseline.", "Record whether the regression is model, setup, or session related."],
+    cta: "Run Baseline when your agent starts forgetting project context."
+  },
+  {
+    path: "/guides/local-first-agent-observability",
+    title: "Local-First Agent Observability Guide | Baseline.ai",
+    description: "A local-first approach to coding agent observability that keeps raw prompts local while syncing redacted run history when needed.",
+    kind: "article",
+    eyebrow: "Guide / local-first observability",
+    heading: "Agent observability should start on the workstation.",
+    lede: "Trace dashboards help after instrumentation exists. Local-first observability answers whether this workstation is healthy right now.",
+    audience: "Privacy-conscious teams running coding agents against private repositories and internal prompts.",
+    updated: "2026-06-01",
+    points: ["Local evidence first: Write SQLite state and report artifacts before cloud history matters.", "Redacted history later: Add Pro history when multiple workstations, retention, billing, or alerts justify it.", "Operational signals: Watch repo awareness, MCP visibility, memory, latency, safety, style, and Good Baseline comparison."],
+    checklist: ["Keep raw prompts and outputs local by default.", "Use redacted summaries for cloud sync.", "Inspect local reports before accepting runs.", "Monitor trend, status, warning count, and duration.", "Escalate to Pro when history and alerts are worth paying for."],
+    cta: "Start local, then add Pro history when drift becomes operational risk."
+  },
+  {
+    path: "/resources/coding-agent-health-checklist",
+    title: "Coding Agent Health Checklist | Baseline.ai",
+    description: "A practical checklist for checking coding agent health before a high-stakes work session.",
+    kind: "lead_magnet",
+    eyebrow: "Resource / checklist",
+    heading: "The coding agent health checklist.",
+    lede: "A one-page operator checklist for confirming your agent is ready before you trust it with production work.",
+    audience: "Operators who need a fast preflight before a coding-agent session.",
+    updated: "2026-06-01",
+    points: ["Before the first prompt: Catch setup, context, tools, memory, latency, safety, and acceptance issues while the cost is still low.", "Runbook fit: Copy the checklist into a team runbook or let Baseline produce the evidence automatically.", "Upgrade signal: If you need this daily across workstations, Pro history and shared alerting are probably worth evaluating."],
+    checklist: ["Workspace path is correct.", "Agent target is configured.", "MCP server is reachable.", "Latest run has acceptable warning count.", "Good Baseline exists and is recent."],
+    cta: "Send me the health checklist and install the CLI."
+  },
+  {
+    path: "/resources/agent-drift-scorecard",
+    title: "Agent Drift Scorecard | Baseline.ai",
+    description: "A scorecard for judging whether coding agent behavior has drifted from a known-good baseline.",
+    kind: "lead_magnet",
+    eyebrow: "Resource / scorecard",
+    heading: "Score agent drift in five minutes.",
+    lede: "Decide whether today’s agent behavior is stable, watch-worthy, or blocked before you change prompts or tools.",
+    audience: "Founder-CTOs and agency teams reviewing agent quality across repeat sessions.",
+    updated: "2026-06-01",
+    points: ["Score behavior: Judge memory, repo awareness, tool visibility, latency, safety, style, and instruction following instead of relying on feel.", "Clear verdict: Mark the session as proceed, rerun, repair setup, or accept a new Good Baseline.", "Concrete support: Use Baseline’s health score, status, warning count, duration, checks, and run id as evidence."],
+    checklist: ["Health score changed materially.", "Warning count increased.", "Memory or repo checks failed.", "MCP tool surface changed.", "Duration jumped from recent runs."],
+    cta: "Use the scorecard, then compare with a Baseline report."
+  },
+  {
+    path: "/resources/mcp-debugging-cheatsheet",
+    title: "MCP Debugging Cheatsheet | Baseline.ai",
+    description: "A cheatsheet for debugging missing MCP tools, broken local CLI setup, and coding-agent server drift.",
+    kind: "lead_magnet",
+    eyebrow: "Resource / cheatsheet",
+    heading: "The MCP debugging cheatsheet for agent workstations.",
+    lede: "When an MCP server goes missing, use this compact recovery path before rewriting prompts or adding tools.",
+    audience: "Developers maintaining local MCP servers for Codex, OpenClaw, and adjacent coding agents.",
+    updated: "2026-06-01",
+    points: ["Binary outward: Check CLI availability, doctor output, then the MCP command.", "Small surface: Preserve the seven-tool local surface instead of adding overlapping preflight tools.", "Recovery proof: After recovery, run Baseline again and compare against the Good Baseline."],
+    checklist: ["baseline is on PATH.", "baseline doctor succeeds or reports a concrete warning.", "MCP command is baseline serve mcp.", "Seven local tools are advertised.", "Scrub preview is available before sync."],
+    cta: "Open the MCP docs and repair your local setup."
+  },
+  {
+    path: "/resources/good-baseline-review-template",
+    title: "Good Baseline Review Template | Baseline.ai",
+    description: "A review template for deciding whether a coding-agent run deserves to become the Good Baseline.",
+    kind: "lead_magnet",
+    eyebrow: "Resource / template",
+    heading: "Review before you accept the Good Baseline.",
+    lede: "Make Good Baseline acceptance explicit, repeatable, and safe for future comparison.",
+    audience: "Teams that need a lightweight approval ritual around coding-agent workstation state.",
+    updated: "2026-06-01",
+    points: ["Acceptance evidence: Check run id, workspace, agent kind, status, health score, duration, warning count, and non-ok checks.", "Readable label: Name the accepted state with a clear label like clean-local.", "Local record: Keep the acceptance decision with local artifacts and sync only redacted summary evidence when enabled."],
+    checklist: ["Run id recorded.", "Warnings explained.", "No critical setup failures.", "Raw outputs reviewed locally if needed.", "Acceptance command includes explicit confirmation."],
+    cta: "Copy the template, then accept only the run that earns it."
+  },
+  {
+    path: "/resources/agency-agent-monitoring-playbook",
+    title: "Agency Agent Monitoring Playbook | Baseline.ai",
+    description: "A playbook for agencies monitoring multiple coding-agent workstations without exposing raw client prompts.",
+    kind: "lead_magnet",
+    eyebrow: "Resource / agency playbook",
+    heading: "Monitor agency agent workstations without leaking client work.",
+    lede: "Standardize local Baseline runs across client workstations and escalate only redacted evidence to shared history.",
+    audience: "Agencies and consultants running coding agents across several private client repositories.",
+    updated: "2026-06-01",
+    points: ["Shared ritual: Standardize setup, run, report, accept, and compare from the real project directory.", "Client privacy: Escalate summaries, not raw prompts, outputs, or paths.", "Pro threshold: Use Pro when retention, alerting, and team-visible evidence become client-facing requirements."],
+    checklist: ["Create a Good Baseline per workstation.", "Keep raw client work local.", "Review warning trends weekly.", "Route critical setup failures before client delivery.", "Use workspace tokens for redacted sync only."],
+    cta: "Use the playbook to standardize Baseline across your agency."
+  },
+];
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -79,11 +291,13 @@ export default {
       if (read && url.pathname === "/admin") return html(adminPage(env));
       if (read && url.pathname === "/docs/mcp") return html(mcpDocsPage(env));
       if (read && url.pathname === "/blog") return html(blogPage(env));
+      const content = read ? contentPageForPath(url.pathname) : undefined;
+      if (content) return html(contentPage(env, content));
       if (read && url.pathname === "/checkout/success") return html(checkoutSuccessPage(env));
       if (read && url.pathname === "/checkout/cancel") return html(checkoutCancelPage(env));
       if (read && url.pathname === "/privacy") return html(privacyPage(env));
       if (read && url.pathname === "/terms") return html(termsPage(env));
-      if (read && url.pathname === "/robots.txt") return text("User-agent: *\nAllow: /\nSitemap: " + baseURL(env, request) + "/sitemap.xml\n");
+      if (read && url.pathname === "/robots.txt") return text(robotsTxt(baseURL(env, request)));
       if (read && url.pathname === "/sitemap.xml") return text(sitemap(baseURL(env, request)), "application/xml");
       if (read && url.pathname === "/api/health") return json({ ok: true, db: Boolean(env.DATABASE_URL), stripe: hasStripe(env), token_required: Boolean(env.BASELINE_API_TOKEN), lifecycle_email: Boolean(env.KLAVIYO_PRIVATE_API_KEY), pro_auth: Boolean(env.MAGIC_LINK_SECRET), pro_tokens: Boolean(env.TOKEN_HMAC_SECRET), stripe_webhook: Boolean(env.STRIPE_WEBHOOK_SECRET) });
       if (read && url.pathname === "/api/runs/latest") return latestRun(request, env);
@@ -93,11 +307,9 @@ export default {
       if (request.method === "POST" && url.pathname === "/api/admin/question-sets") return upsertQuestionSet(request, env);
       if (request.method === "POST" && url.pathname === "/api/admin/evaluate") return evaluateRun(request, env);
       if (read && url.pathname === "/api/admin/evaluations") return listEvaluations(request, env);
+      if (read && url.pathname === "/api/admin/leads") return listLeadMagnetRequests(request, env);
       if (request.method === "POST" && url.pathname === "/api/runs") return ingestRun(request, env);
-      if (request.method === "POST" && url.pathname === "/api/events") {
-        ctx.waitUntil(recordEvent(request, env, url.pathname));
-        return json({ ok: true });
-      }
+      if (request.method === "POST" && url.pathname === "/api/events") return recordEvent(request, env, url.pathname);
       if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/checkout") return checkout(request, env, ctx);
       return html(notFoundPage(env), 404);
     } catch (error) {
@@ -110,17 +322,29 @@ async function latestRun(request: Request, env: Env): Promise<Response> {
   const sql = configuredSQL(env);
   if (!sql) return json({ ok: true, configured: false, run: demoRun(), origin: baseURL(env, request) });
   await ensureSchema(sql);
-  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 1`;
+  const rows = await sql`
+    select id, workspace, agent_kind, status, health_score, mode, payload, created_at
+    from baseline_runs
+    where account_id is null or comparison_scope = 'legacy'
+    order by created_at desc
+    limit 1
+  `;
   const run = rows.length ? normalizeRun(rows[0] as Record<string, unknown>) : demoRun();
-  return json({ ok: true, configured: true, run, origin: baseURL(env, request) });
+  return json({ ok: true, configured: true, demo: !rows.length, run, origin: baseURL(env, request) });
 }
 
 async function runTimeline(env: Env): Promise<Response> {
   const sql = configuredSQL(env);
   if (!sql) return json({ ok: true, configured: false, runs: [demoRun()] });
   await ensureSchema(sql);
-  const rows = await sql`select id, workspace, agent_kind, status, health_score, mode, payload, created_at from baseline_runs order by created_at desc limit 30`;
-  return json({ ok: true, configured: true, runs: rows.map((row) => normalizeRun(row as Record<string, unknown>)) });
+  const rows = await sql`
+    select id, workspace, agent_kind, status, health_score, mode, payload, created_at
+    from baseline_runs
+    where account_id is null or comparison_scope = 'legacy'
+    order by created_at desc
+    limit 30
+  `;
+  return json({ ok: true, configured: true, demo: !rows.length, runs: rows.length ? rows.map((row) => normalizeRun(row as Record<string, unknown>)) : [demoRun()] });
 }
 
 async function listQuestionSets(env: Env, admin: boolean, request?: Request): Promise<Response> {
@@ -196,6 +420,39 @@ async function listEvaluations(request: Request, env: Env): Promise<Response> {
   return json({ ok: true, configured: true, evaluations: rows });
 }
 
+async function listLeadMagnetRequests(request: Request, env: Env): Promise<Response> {
+  const auth = requireAdmin(request, env);
+  if (auth) return auth;
+  const sql = configuredSQL(env);
+  if (!sql) return json({ ok: true, configured: false, leads: [] });
+  await ensureSchema(sql);
+  const url = new URL(request.url);
+  const before = url.searchParams.get("before") || "";
+  const rows = await sql`
+    select id, type, path, payload, created_at
+    from baseline_events
+    where type in ('lead_magnet_request', 'pilot_request')
+      and (${before} = '' or created_at < ${before})
+    order by created_at desc
+    limit 50
+  `;
+  const leads = rows.map(normalizeLeadMagnetRequest);
+  return json({ ok: true, configured: true, leads, next_before: leads.length ? leads[leads.length - 1].created_at : null });
+}
+
+function normalizeLeadMagnetRequest(row: Record<string, unknown>): Record<string, unknown> {
+  const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload as Record<string, unknown> | undefined;
+  return {
+    id: row.id,
+    type: row.type || "lead_magnet_request",
+    path: row.path,
+    email: normalizeOptionalEmail(payload?.email),
+    resource: typeof payload?.resource === "string" ? payload.resource : row.path,
+    context: typeof payload?.context === "string" ? payload.context : "",
+    created_at: row.created_at
+  };
+}
+
 async function ingestRun(request: Request, env: Env): Promise<Response> {
   const payload = await request.json<RunPayload>();
   if (!payload.run_id) return json({ ok: false, error: "run_id required" }, 400);
@@ -205,7 +462,7 @@ async function ingestRun(request: Request, env: Env): Promise<Response> {
   const ingestContext = await resolveRunIngestContext(request, env, sql);
   if (ingestContext instanceof Response) return ingestContext;
   const accountPrivatePayload = ingestContext.legacy ? null : JSON.stringify(payload);
-  await sql`
+  const inserted = await sql`
     insert into baseline_runs (id, workspace, agent_kind, status, health_score, mode, payload, account_id, workspace_id, expires_at, account_private_payload, comparison_scope)
     values (
       ${payload.run_id}, ${payload.workspace || "unknown"}, ${payload.agent_kind || "unknown"}, ${payload.status || "unknown"},
@@ -224,7 +481,10 @@ async function ingestRun(request: Request, env: Env): Promise<Response> {
       expires_at = excluded.expires_at,
       account_private_payload = excluded.account_private_payload,
       comparison_scope = excluded.comparison_scope
+    where baseline_runs.account_id is not distinct from excluded.account_id
+    returning id
   `;
+  if (!inserted.length) return json({ ok: false, error: "run_id already belongs to a different account" }, 409);
   await recordRunAggregates(sql, payload, ingestContext);
   return json({ ok: true, account_scoped: !ingestContext.legacy });
 }
@@ -461,20 +721,56 @@ function average(values: number[]): number {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
-async function recordEvent(request: Request, env: Env, path: string): Promise<void> {
-  if (!env.DATABASE_URL) return;
-  const sql = neon(env.DATABASE_URL);
-  await ensureSchema(sql);
+async function recordEvent(request: Request, env: Env, path: string): Promise<Response> {
   let payload: Record<string, unknown> = {};
   try {
     payload = await request.json<Record<string, unknown>>();
   } catch {
     payload = {};
   }
+  if (leadHoneypotFilled(payload)) return json({ ok: true, spam: true });
+  const eventType = String(payload.type || "event");
+  const eventPath = String(payload.path || path);
+  if (eventType === "lead_magnet_request" || eventType === "pilot_request") {
+    if (!normalizeOptionalEmail(payload.email)) return json({ ok: false, error: "valid email required" }, 400);
+    await emitLeadMagnetRequestedEvents(env, payload, eventPath, eventType);
+  }
+  if (!env.DATABASE_URL) {
+    return json({
+      ok: true,
+      stored: false,
+      delivery: { provider: "klaviyo", configured: Boolean(env.KLAVIYO_PRIVATE_API_KEY) },
+      warning: "DATABASE_URL is not configured, so this event was not stored in the admin queue."
+    });
+  }
+  const sql = neon(env.DATABASE_URL);
+  await ensureSchema(sql);
+  const storedPayload = scrubEventPayload(payload);
   await sql`
     insert into baseline_events (id, type, path, payload)
-    values (${crypto.randomUUID()}, ${String(payload.type || "event")}, ${String(payload.path || path)}, ${JSON.stringify(payload)}::jsonb)
+    values (${crypto.randomUUID()}, ${eventType}, ${eventPath}, ${JSON.stringify(storedPayload)}::jsonb)
   `;
+  return json({
+    ok: true,
+    stored: true,
+    delivery: { provider: "klaviyo", configured: Boolean(env.KLAVIYO_PRIVATE_API_KEY) }
+  });
+}
+
+function leadHoneypotFilled(payload: Record<string, unknown>): boolean {
+  return typeof payload.website === "string" && payload.website.trim().length > 0;
+}
+
+function scrubEventPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const clean = { ...payload };
+  const email = normalizeOptionalEmail(clean.email);
+  if (email) clean.email = email;
+  else delete clean.email;
+  if (typeof clean.context === "string") clean.context = clean.context.trim().slice(0, 240);
+  if (typeof clean.resource === "string") clean.resource = clean.resource.trim().slice(0, 180);
+  if (typeof clean.plan === "string") clean.plan = clean.plan.trim().slice(0, 24);
+  delete clean.website;
+  return clean;
 }
 
 async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
@@ -482,21 +778,24 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   const input = request.method === "POST" ? await safeCheckoutInput(request) : {};
   const plan = (input.plan || url.searchParams.get("plan")) === "team" ? "team" : "pro";
   const email = normalizeOptionalEmail(input.email);
+  const origin = baseURL(env, request);
+  if (!email) {
+    if (request.method === "GET") return html(checkoutNeedsEmailPage(env, plan), 400);
+    return json({ ok: false, error: "valid email required before checkout so the account can be provisioned" }, 400);
+  }
   const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   const paymentLink = plan === "team" ? env.STRIPE_PAYMENT_LINK_TEAM : env.STRIPE_PAYMENT_LINK_PRO;
   const canCreateCheckoutSession = Boolean(env.STRIPE_SECRET_KEY && price);
   if (paymentLink && !canCreateCheckoutSession) {
-    if (request.method === "POST") {
-      ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, true));
-      return json({ ok: true, url: paymentLink });
-    }
-    return Response.redirect(paymentLink, 303);
+    return json({
+      ok: false,
+      error: "Stripe Checkout Sessions are required for account provisioning; payment links are disabled for Baseline Pro onboarding."
+    }, 503);
   }
   if (!env.STRIPE_SECRET_KEY) {
-    return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM or payment links." }, 503);
+    return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM before paid checkout." }, 503);
   }
   if (!price) return json({ ok: false, error: "Stripe price id is not configured for " + plan }, 503);
-  const origin = baseURL(env, request);
   const body = new URLSearchParams({
     mode: "subscription",
     success_url: normalizeCheckoutReturn(input.successUrl, origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", origin),
@@ -599,6 +898,43 @@ async function emitCheckoutStartedEvents(env: Env, email: string | undefined, pl
   ]);
 }
 
+async function emitLeadMagnetRequestedEvents(env: Env, payload: Record<string, unknown>, path: string, eventType = "lead_magnet_request"): Promise<void> {
+  const email = normalizeOptionalEmail(payload.email);
+  const masterEmail = normalizeOptionalEmail(env.BASELINE_MASTER_EMAIL);
+  const uniqueId = crypto.randomUUID();
+  const time = new Date().toISOString();
+  const metric = eventType === "pilot_request" ? "Baseline Pilot Requested" : "Baseline Lead Magnet Requested";
+  const properties = {
+    event_type: eventType,
+    site_id: "baseline-ai",
+    app_url: baseURL(env),
+    path,
+    resource: typeof payload.resource === "string" ? payload.resource.slice(0, 180) : path,
+    plan: typeof payload.plan === "string" ? payload.plan.slice(0, 24) : "",
+    context: typeof payload.context === "string" ? payload.context.trim().slice(0, 240) : "",
+    customer_email_present: Boolean(email)
+  };
+  await Promise.all([
+    emitKlaviyoEvent(env, {
+      email,
+      metric,
+      uniqueId,
+      time,
+      properties
+    }),
+    emitKlaviyoEvent(env, {
+      email: masterEmail,
+      metric: "Baseline Master Notification",
+      uniqueId: "master:" + uniqueId,
+      time,
+      properties: {
+        ...properties,
+        customer_email: email || ""
+      }
+    })
+  ]);
+}
+
 async function emitKlaviyoEvent(
   env: Env,
   event: { email?: string | null; metric: string; uniqueId: string; time: string; properties: Record<string, unknown> }
@@ -680,7 +1016,12 @@ async function ensureSchema(sql: NeonQueryFunction<false, false>): Promise<void>
 }
 
 function landingPage(env: Env): string {
-  return layout(env, "Baseline.ai | Keep coding agents inside the lines", `
+  return layout(env, {
+    title: "Baseline.ai | Keep coding agents inside the lines",
+    description: "Baseline is a local CLI and MCP checker that compares coding-agent runs to a known-good baseline, catching tool, memory, repo, safety, and latency drift before work is affected.",
+    path: "/",
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="fieldLanding">
       <section class="fieldHero" id="the-check">
         <div class="film heroStill filmGrain">
@@ -688,21 +1029,22 @@ function landingPage(env: Env): string {
         </div>
         <div class="heroCopy">
           <div>
-            <p class="eyebrow">Installs in seconds</p>
-            <h1>Your agent forgot. Baseline did not.</h1>
-            <p class="bodyText heroLede">Probe your agent in seconds to track real-life drift over time. Keep Hermes and OpenClaw dialed, and know before issues reach the work.</p>
+            <p class="eyebrow">Local CLI + MCP drift checks</p>
+            <h1>Know when your coding agent quietly changed.</h1>
+            <p class="bodyText heroLede">Baseline probes OpenClaw, Codex, Hermes, Claude Code, or any approved local runner and compares each run to a known-good baseline, so you catch model, tool, memory, repo, and latency drift before it burns a work session.</p>
             <div class="fieldActions">
               <a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="hero">install the cli &rarr;</a>
-              <a class="btn btnGhost" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="hero">watch a run</a>
+              <a class="btn btnGhost" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="hero">see a sample run</a>
             </div>
           </div>
           <div class="terminalSample">
-            <p class="eyebrow">Installs in seconds</p>
-            <pre class="codeBlock"><code><span class="cmt">$</span> curl -fsSL https://trackbaseline.com/install.sh | sh
-<span class="cmt">$</span> baseline run
-<span class="key">-&gt;</span> run_8f2c . score 92 . 11 ok / 3 watch / 0 fail
-<span class="cmt">#</span> watch: <span class="key">mcp.openclaw.config</span> drifted from baseline_clean-local
-<span class="cmt">#</span> watch: <span class="key">latency.tool_probe</span> +312ms over 5-day median</code></pre>
+            <p class="eyebrow">Copy and run</p>
+            ${copyCommandBlock(`curl -fsSL https://trackbaseline.com/install.sh | sh
+baseline setup
+baseline run --mode fast
+baseline report RUN_ID
+baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
+baseline compare`, "First local baseline")}
           </div>
         </div>
       </section>
@@ -710,10 +1052,11 @@ function landingPage(env: Env): string {
       <section class="scoreboardSection" aria-labelledby="scoreboard-heading" data-fast-scroll="scroll_to_scoreboard">
         <div class="sectionTitleRow">
           <div>
-            <p class="eyebrow">Today . across your workstations</p>
-            <h2 id="scoreboard-heading">Three agents. One scoreboard.</h2>
+            <p class="eyebrow">Sample data . after three workstations sync</p>
+            <h2 id="scoreboard-heading">A line judge for every coding agent.</h2>
+            <p class="bodyText">The dashboard is an example of what redacted Pro history can show after local runs start syncing. Your raw prompts, outputs, and repo paths stay on the workstation by default.</p>
           </div>
-          <a class="underLink" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="scoreboard">open dashboard &rarr;</a>
+          <a class="underLink" href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="scoreboard">see sample dashboard &rarr;</a>
         </div>
         ${agentScoreboard()}
       </section>
@@ -728,13 +1071,13 @@ function landingPage(env: Env): string {
       <section class="dailySection">
         <div>
           <p class="eyebrow">Run Baseline daily</p>
-          <h2>Compare agent responses against a known good baseline.</h2>
-          <p class="bodyText">Learn about latency, drift, and memory issues in real time, before they impact your work.</p>
+          <h2>Accept one clean run. Judge every later run against it.</h2>
+          <p class="bodyText">Baseline stores a local SQLite history, writes report artifacts, and tells you exactly which behavior changed: tool visibility, repo awareness, memory carryover, instruction following, safety scrub, or latency.</p>
           <hr>
           <ul class="dashList">
-            <li>Enable daily deep or fast checks.</li>
-            <li>Compare responses against good baselines, by agent.</li>
-            <li>Review changes over time to see model and harness impact.</li>
+            <li>Start with a fast check before important agent work.</li>
+            <li>Run daily checks through launchd or MCP once the workstation is stable.</li>
+            <li>Use Pro only when you need redacted history, routed alerts, or team-visible evidence.</li>
           </ul>
         </div>
         <div class="film filmGrain portraitStill">
@@ -756,8 +1099,8 @@ function landingPage(env: Env): string {
       <section class="commandSection">
         <div>
           <p class="eyebrow">Four commands</p>
-          <h2>Install. Establish. Compare. Accept.</h2>
-          <p class="bodyText">The local loop. Seven MCP tools on top for agents that want to call Baseline themselves. No web app required to get value; the cloud surface is for history, alerts, and team-visible evidence after the workstation is already producing redacted runs.</p>
+          <h2>Setup. Run. Accept. Compare.</h2>
+          <p class="bodyText">The first hour is deliberately boring: install the binary, run the probes, read the report, accept a clean run, then compare future sessions against that standard. MCP tools let agents trigger the same loop without making the cloud required. New to the ritual? Start with the <a class="underLink" href="/guides/good-baseline-workflow">Good Baseline workflow</a>.</p>
         </div>
         ${stepBlocks()}
       </section>
@@ -783,13 +1126,14 @@ function landingPage(env: Env): string {
             <p class="eyebrow">Pricing</p>
             <h2>Start local. Pay when drift becomes operational risk.</h2>
           </div>
-          <p class="bodyText">The CLI and MCP are free. Pro adds redacted run history, lifecycle email, and private probes. Team adds shared workstations and routed alerts.</p>
+          <p class="bodyText">Baseline should prove itself on one workstation before you pay. The free local loop catches drift immediately; Pro and Team turn those local reports into retained history, alerts, and account-scoped evidence. Compare options in the <a class="underLink" href="/guides/local-first-agent-observability">local-first observability guide</a> or use the <a class="underLink" href="/resources/agency-agent-monitoring-playbook">agency monitoring playbook</a>.</p>
         </div>
         <div class="priceTable">
-          ${priceColumn("Local", "$0", "", "The whole product", ["SQLite store. MCP. Scrub preview.", "Local report artifacts.", "Good Baseline / compare."], "install", "/docs/mcp", false)}
-          ${priceColumn("Pro", "$39", "/mo / workstation", "When history matters", ["Redacted run history.", "Checkout-linked account.", "Lifecycle email + private probes."], "buy pro", "/api/checkout?plan=pro", true)}
-          ${priceColumn("Team", "$129", "/mo / team", "When alerts need to route", ["Shared dashboards.", "Token / workspace model.", "Audit exports."], "buy team", "/api/checkout?plan=team", false)}
+          ${priceColumn("Local", "$0", "", "First workstation", ["CLI and MCP runner.", "Local SQLite history and report artifacts.", "Good Baseline review, accept, and compare."], "install", "/docs/mcp", false)}
+          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 private workspaces.", "Redacted run history and magic-link account access.", "Lifecycle email, retention, and private probes."], "buy pro", "/api/checkout?plan=pro", true)}
+          ${priceColumn("Team", "$129", "/mo", "When alerts need to route", ["Up to 10 shared workspaces.", "Account-scoped tokens and support handoffs.", "Audit exports and routed drift alerts."], "buy team", "/api/checkout?plan=team", true)}
         </div>
+        ${pilotRequestPanel()}
       </section>
 
       <section class="fieldNotes">
@@ -801,32 +1145,32 @@ function landingPage(env: Env): string {
           <a class="underLink" href="/blog" data-fast-goal="blog_click" data-fast-goal-location="field_notes">all notes &rarr;</a>
         </div>
         <div class="noteGrid">
-          ${noteCard("2026 . 05 . 14", "How to accept a Good Baseline.", "The five-minute review ritual before a run becomes the standard your workstation compares against.")}
-          ${noteCard("2026 . 04 . 28", "MCP drift looks like nothing, until it costs a day.", "Three real incidents from operator pilots. None of them showed up in trace dashboards.")}
-          ${noteCard("2026 . 04 . 09", "The case against a leaderboard.", "Why Baseline does not score models against each other, and what it scores instead.")}
+          ${noteCard("2026 . 05 . 14", "How to accept a Good Baseline.", "The five-minute review ritual before a run becomes the standard your workstation compares against.", "/blog#good-baseline")}
+          ${noteCard("2026 . 04 . 28", "MCP drift looks like nothing, until it costs a day.", "The quiet config and tool-surface failures that do not show up in trace dashboards.", "/blog#mcp-drift")}
+          ${noteCard("2026 . 04 . 09", "The case against a leaderboard.", "Why Baseline measures this workstation against its own clean run, not models against each other.", "/blog#no-leaderboard")}
         </div>
       </section>
 
       <section class="closerSection" data-fast-scroll="scroll_to_final_cta">
-        <h2>In the line, or out.</h2>
+        <h2>Run the line call before the next session.</h2>
         <div>
-          <p class="bodyText">Install the CLI. Run the check once. Accept the run that earns it. That is the first hour with Baseline.</p>
+          <p class="bodyText">Copy the installer, run a fast baseline, and only accept the run after you read the report. That is enough to catch the next quiet drift.</p>
           <div class="fieldActions">
-            <a class="btn paperBtn" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="final_cta">install &rarr;</a>
-            <a class="btn outlinePaperBtn" href="/docs/mcp" data-fast-goal="docs_click" data-fast-goal-location="final_cta">read the docs</a>
+            <button class="btn paperBtn" type="button" data-copy-value="curl -fsSL https://trackbaseline.com/install.sh | sh" data-fast-goal="install_click" data-fast-goal-location="final_cta">copy install command</button>
+            <a class="btn outlinePaperBtn" href="/#pricing" data-fast-goal="pricing_click" data-fast-goal-location="final_cta">see pricing</a>
           </div>
         </div>
       </section>
     </main>
     ${proAccountScript()}
-  `, softwareJsonLD(env));
+  `);
 }
 
 function agentScoreboard(): string {
   const agents = [
     {
-      name: "OpenClaw",
-      workspace: "apollo-street/api",
+      name: "Morning runner",
+      workspace: "sample/api",
       score: 92,
       delta: "+1",
       status: "watch",
@@ -838,8 +1182,8 @@ function agentScoreboard(): string {
       ],
     },
     {
-      name: "Hermes",
-      workspace: "apollo-street/web",
+      name: "Review runner",
+      workspace: "sample/web",
       score: 97,
       delta: "+2",
       status: "ok",
@@ -851,8 +1195,8 @@ function agentScoreboard(): string {
       ],
     },
     {
-      name: "Claude Code",
-      workspace: "apollo-street/infra",
+      name: "Legacy runner",
+      workspace: "sample/infra",
       score: 78,
       delta: "-9",
       status: "fail",
@@ -866,7 +1210,7 @@ function agentScoreboard(): string {
   ];
   return `<div class="agentGrid">${agents.map((agent) => `
     <article class="agentCard">
-      <header><strong>${agent.name}</strong><code>${agent.workspace}</code></header>
+      <header><strong>${agent.name}</strong><code>sample . ${agent.workspace}</code></header>
       <div class="agentBody">
         <div>
           <p class="agentScore">${agent.score}<span>/100</span></p>
@@ -917,10 +1261,10 @@ function probeRows(): string {
 
 function stepBlocks(): string {
   const steps = [
-    ["baseline setup", "Detect the local agent, write SQLite, run preflight."],
-    ["baseline run --mode fast", "Fourteen probes against the active workstation. About eight seconds."],
-    ["baseline accept run_8f2c --label clean-local", "Review the report. Mark this run as your Good Baseline."],
-    ["baseline compare", "Every later run is judged against the accepted one."],
+    ["baseline setup", "Detect the local agent, initialize SQLite, and confirm the runner is safe to call."],
+    ["baseline run --mode fast", "Run the default probes against the active workstation and write a local report."],
+    ["baseline accept RUN_ID --confirm \"accept RUN_ID\" --label clean-local", "Read the report first, then mark the clean run as your Good Baseline."],
+    ["baseline compare", "Judge every later run against the accepted baseline and surface the changed behavior."],
   ];
   return `<div class="stepStack">${steps.map(([cmd, desc], index) => `
     <div>
@@ -932,6 +1276,7 @@ function stepBlocks(): string {
 
 function priceColumn(name: string, price: string, sub: string, tag: string, features: string[], cta: string, href: string, form: boolean): string {
   const plan = name.toLowerCase();
+  const emailId = `checkout-email-${plan}`;
   const goalAttrs = plan === "local"
     ? `data-fast-goal="install_click" data-fast-goal-plan="local" data-fast-goal-location="pricing"`
     : `data-fast-goal="checkout_start" data-fast-goal-plan="${plan}" data-fast-goal-price="${price.replace("$", "")}" data-fast-goal-currency="usd" data-fast-goal-location="pricing"`;
@@ -941,9 +1286,9 @@ function priceColumn(name: string, price: string, sub: string, tag: string, feat
     <p class="price">${price}${sub ? `<span>${sub}</span>` : ""}</p>
     <ul>${features.map((feature) => `<li>${feature}</li>`).join("")}</ul>
     ${form ? `
-      <form class="checkoutForm" data-checkout-form>
-        <label class="srOnly" for="checkout-email">Email for Pro checkout</label>
-        <input id="checkout-email" name="email" type="email" autocomplete="email" placeholder="email" required>
+      <form class="checkoutForm" data-checkout-form data-plan="${plan}" data-price="${price.replace("$", "")}">
+        <label class="srOnly" for="${emailId}">Email for ${name} checkout</label>
+        <input id="${emailId}" name="email" type="email" autocomplete="email" placeholder="work email" required>
         <button class="btn btnPrimary" type="submit" ${goalAttrs}>${cta} &rarr;</button>
         <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
       </form>
@@ -951,8 +1296,41 @@ function priceColumn(name: string, price: string, sub: string, tag: string, feat
   </article>`;
 }
 
-function noteCard(date: string, title: string, body: string): string {
-  return `<a href="/blog" class="noteCard">
+function copyCommandBlock(command: string, label: string): string {
+  const encoded = escapeHTML(command).replace(/\n/g, "&#10;");
+  return `<div class="copyCommand">
+    <div class="copyCommandTop">
+      <span>${escapeHTML(label)}</span>
+      <button type="button" data-copy-value="${encoded}">copy</button>
+    </div>
+    <pre class="codeBlock"><code>${escapeHTML(command)}</code></pre>
+  </div>`;
+}
+
+function pilotRequestPanel(): string {
+  return `<section class="leadCapture pilotCapture" id="pilot-request">
+    <div>
+      <p class="eyebrow">Paid pilot</p>
+      <h2>Want the first run watched with you?</h2>
+      <p>Request a 7-day Baseline pilot. The operator path is simple: invite, magic link, workspace token, redacted sync, then one reviewed Good Baseline.</p>
+    </div>
+    <form data-pilot-form>
+      <label class="srOnly" for="pilot-request-email">Work email</label>
+      <input id="pilot-request-email" name="email" type="email" autocomplete="email" placeholder="work email" required>
+      <select name="plan" aria-label="Pilot plan">
+        <option value="pro">Pro pilot</option>
+        <option value="team">Team pilot</option>
+      </select>
+      <input name="context" type="text" autocomplete="off" placeholder="agent stack, team size, or biggest drift pain">
+      <label class="srOnly hpField">Website <input name="website" type="text" autocomplete="off" tabindex="-1"></label>
+      <button class="btn btnPrimary" type="submit" data-fast-goal="pilot_request" data-fast-goal-location="pricing">Request pilot &rarr;</button>
+      <p class="leadStatus" data-pilot-status aria-live="polite"></p>
+    </form>
+  </section>`;
+}
+
+function noteCard(date: string, title: string, body: string, href = "/blog"): string {
+  return `<a href="${href}" class="noteCard">
     <span>${date}</span>
     <strong>${title}</strong>
     <p>${body}</p>
@@ -961,36 +1339,215 @@ function noteCard(date: string, title: string, body: string): string {
 }
 
 function blogPage(env: Env): string {
-  return layout(env, "Baseline.ai Blog", `
+  const guides = CONTENT_PAGES.filter((page) => page.kind === "article");
+  const resources = CONTENT_PAGES.filter((page) => page.kind === "lead_magnet");
+  return layout(env, {
+    title: "Baseline.ai Field Notes",
+    description: "Field notes, guides, checklists, scorecards, and templates for coding agent health checks, drift detection, MCP debugging, and Good Baseline workflows.",
+    path: "/blog",
+    structuredData: blogJsonLD(env)
+  }, `
     <main class="doc blogPage">
       <p class="eyebrow">Baseline field notes</p>
-      <h1>Blog stub</h1>
-      <p>Short operator essays will live here: Good Baseline rituals, Pro monitoring rollout notes, MCP drift patterns, and launch evidence from the first paid pilots.</p>
-      <div class="blogGrid">
-        <article><strong>Accepting a Good Baseline</strong><span>Draft: how to review local artifacts before trusting a workstation state.</span></article>
-        <article><strong>Pro Account Architecture</strong><span>Draft: Stripe checkout, Klaviyo lifecycle events, entitlement ledger, and redacted sync.</span></article>
-        <article><strong>The Baseline Court</strong><span>Draft: why line calls, scoreboards, and warmups are the product metaphor.</span></article>
+      <h1>Field notes for agent operators.</h1>
+      <p class="summaryBlock">Baseline is for the moment after an agent seemed fine yesterday and feels different today. These notes explain the local loop, the failure modes it catches, and why the product measures your own workstation instead of ranking models in public.</p>
+      <article id="good-baseline" class="fieldNote">
+        <p class="eyebrow">2026 . 05 . 14</p>
+        <h2>How to accept a Good Baseline.</h2>
+        <p>A Good Baseline is not the first run that finishes. It is the run you are willing to compare future work against. Start with <code>baseline setup</code>, run <code>baseline run --mode fast</code>, then open the report and check the boring things: correct workspace, expected agent identity, reachable MCP tools, clean scrubber output, and no surprising latency jump.</p>
+        <p>Only then accept it with <code>baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local</code>. From that point on, <code>baseline compare</code> has a real reference point.</p>
+      </article>
+      <article id="mcp-drift" class="fieldNote">
+        <p class="eyebrow">2026 . 04 . 28</p>
+        <h2>MCP drift looks like nothing, until it costs a day.</h2>
+        <p>The painful agent failures rarely announce themselves. A server disappears from the tool list. A config file points at a stale workspace. The model can still chat, but it no longer sees the same repo, memory, or local tools it had during the clean session.</p>
+        <p>A local run creates a redacted report before the work starts. Pro history helps when the same warning repeats across days or machines, but the useful habit is smaller: run the line call before important sessions and fix the workstation before you trust the agent.</p>
+      </article>
+      <article id="no-leaderboard" class="fieldNote">
+        <p class="eyebrow">2026 . 04 . 09</p>
+        <h2>The case against a leaderboard.</h2>
+        <p>Baseline does not try to prove that one model is better than another in the abstract. Your risk is local: this agent, in this repo, with these tools, under today's config.</p>
+        <p>The score is a workstation health signal, not a trophy. Use it to decide whether to proceed, repair, or rerun. When a run is clean, accept it. When it drifts, investigate the exact probe that changed.</p>
+      </article>
+      <h2>SEO/AEO guides</h2>
+      <div class="blogGrid contentIndex">
+        ${guides.map(contentCard).join("")}
+      </div>
+      <h2>Lead resources</h2>
+      <div class="blogGrid contentIndex">
+        ${resources.map(contentCard).join("")}
       </div>
     </main>
-  `, softwareJsonLD(env));
+  `);
+}
+
+function contentPageForPath(pathname: string): ContentPage | undefined {
+  return CONTENT_PAGES.find((page) => page.path === pathname);
+}
+
+function contentCard(page: ContentPage): string {
+  const label = page.kind === "article" ? "Guide" : "Resource";
+  return `<a href="${page.path}"><span>${label} / ${page.updated}</span><strong>${escapeHTML(page.heading)}</strong><p>${escapeHTML(page.description)}</p><em>Read &rarr;</em></a>`;
+}
+
+function contentCardByPath(path: string): string {
+  const page = contentPageForPath(path);
+  return page ? contentCard(page) : "";
+}
+
+function contentPage(env: Env, page: ContentPage): string {
+  return layout(env, {
+    title: page.title,
+    description: page.description,
+    path: page.path,
+    structuredData: contentJsonLD(env, page)
+  }, `
+    <main class="doc contentPage">
+      <p class="eyebrow">${escapeHTML(page.eyebrow)}</p>
+      <h1>${escapeHTML(page.heading)}</h1>
+      <p class="ledeText">${escapeHTML(page.lede)}</p>
+      <div class="resourceMeta">
+        <span>${page.kind === "article" ? "SEO/AEO guide" : "Lead resource"}</span>
+        <span>Updated ${escapeHTML(page.updated)}</span>
+        <span>${escapeHTML(page.audience)}</span>
+      </div>
+      <div class="contentSections">
+        ${page.points.map(contentSection).join("")}
+      </div>
+      <section class="resourceBox">
+        <p class="eyebrow">Use this today</p>
+        <h2>${page.kind === "article" ? "Operator checklist" : "What you get"}</h2>
+        <ul>${page.checklist.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>
+      </section>
+      ${leadMagnetCapture(page)}
+      <section class="contentCta">
+        <h2>${escapeHTML(page.cta)}</h2>
+        <div class="actions">
+          <a class="button primary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="content_${page.kind}">Install Baseline</a>
+          <a class="button secondary" href="/blog">Browse all guides</a>
+        </div>
+      </section>
+    </main>
+  `);
+}
+
+function contentSection(point: string, index: number): string {
+  const divider = point.indexOf(":");
+  const heading = divider > 0 ? point.slice(0, divider) : point;
+  const body = divider > 0 ? point.slice(divider + 1).trim() : point;
+  return `<section><h2>${index + 1}. ${escapeHTML(heading)}</h2><p>${escapeHTML(body)}</p></section>`;
+}
+
+function leadMagnetCapture(page: ContentPage): string {
+  if (page.kind !== "lead_magnet") return "";
+  const inputId = `resource-email-${page.path.split("/").pop() || "resource"}`;
+  return `<section class="leadCapture" data-resource="${escapeHTML(page.path)}">
+    <div>
+      <p class="eyebrow">Lead magnet</p>
+      <h2>Request the worksheet follow-up and 7-day pilot prompt.</h2>
+      <p>The checklist stays on this page. Leave an email if you want the follow-up prompt and a quick note on where this resource fits in your agent workflow.</p>
+    </div>
+    <form data-resource-form data-resource="${escapeHTML(page.path)}">
+      <label class="srOnly" for="${escapeHTML(inputId)}">Work email</label>
+      <input id="${escapeHTML(inputId)}" name="email" type="email" autocomplete="email" placeholder="work email" required>
+      <input name="context" type="text" autocomplete="off" placeholder="agent stack or biggest drift pain">
+      <label class="srOnly hpField">Website <input name="website" type="text" autocomplete="off" tabindex="-1"></label>
+      <button class="btn btnPrimary" type="submit" data-fast-goal="lead_magnet_request" data-fast-goal-location="${escapeHTML(page.path)}">Request pilot prompt</button>
+      <p class="leadStatus" data-resource-status aria-live="polite"></p>
+    </form>
+  </section>`;
+}
+
+function contentJsonLD(env: Env, page: ContentPage): string {
+  const origin = baseURL(env);
+  const schema = page.kind === "article" ? {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: page.heading,
+    description: page.description,
+    dateModified: page.updated,
+    datePublished: page.updated,
+    author: { "@type": "Organization", name: "Baseline.ai" },
+    publisher: { "@type": "Organization", name: "Baseline.ai" },
+    mainEntityOfPage: origin + page.path,
+    url: origin + page.path
+  } : {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    name: page.heading,
+    description: page.description,
+    dateModified: page.updated,
+    creator: { "@type": "Organization", name: "Baseline.ai" },
+    audience: page.audience,
+    url: origin + page.path
+  };
+  return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
 }
 
 function checkoutSuccessPage(env: Env): string {
-  return layout(env, "Baseline.ai Pro checkout success", `
+  return layout(env, {
+    title: "Baseline.ai Pro checkout success",
+    description: "Baseline Pro checkout success return page for account setup and redacted sync.",
+    path: "/checkout/success",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="doc">
       <p class="eyebrow">Checkout returned</p>
       <h1>Pro checkout received.</h1>
-      <p>Stripe returned successfully. The next backend bead should verify the session, store the entitlement, and issue or connect a Pro monitoring token for redacted run sync.</p>
-      <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
+      <p>Your subscription is now tied to the email used at checkout. Request the magic link for that email, open it, then create a workspace token for redacted sync.</p>
+      <div id="checkout-session-status" class="alert warning">Checking Stripe return status.</div>
+      <section class="resourceBox">
+        <h2>Send the account link</h2>
+        <form class="checkoutForm" data-magic-link-form>
+          <label class="srOnly" for="success-email">Checkout email</label>
+          <input id="success-email" name="email" type="email" autocomplete="email" placeholder="checkout email" required>
+          <button class="btn btnPrimary" type="submit">send magic link &rarr;</button>
+          <p class="checkoutStatus" data-magic-link-status aria-live="polite"></p>
+        </form>
+      </section>
+      <h2>After the link opens</h2>
+      <pre><code>POST ${escapeHTML(baseURL(env))}/api/workspaces
+Authorization: Bearer YOUR_SESSION_TOKEN
+
+POST ${escapeHTML(baseURL(env))}/api/tokens
+Authorization: Bearer YOUR_SESSION_TOKEN
+
+baseline sync on --url ${escapeHTML(baseURL(env))} \\
+  --token YOUR_WORKSPACE_TOKEN
 baseline sync push</code></pre>
-      <p><a class="button primary" href="/dashboard">Open dashboard</a></p>
+      <p><a class="button primary" href="/docs/mcp">Open setup docs</a></p>
     </main>
+    ${checkoutSuccessScript()}
     <script>window.datafast && window.datafast("checkout_return_success", { plan: "pro", provider: "stripe" });</script>
-  `, softwareJsonLD(env));
+  `);
+}
+
+function checkoutNeedsEmailPage(env: Env, plan: string): string {
+  return layout(env, {
+    title: "Baseline.ai Checkout Needs Email",
+    description: "Baseline checkout needs an email before starting Stripe so the account can be provisioned.",
+    path: "/api/checkout",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
+    <main class="doc">
+      <p class="eyebrow">Checkout paused</p>
+      <h1>Add an email before ${escapeHTML(plan)} checkout.</h1>
+      <p>Baseline attaches checkout to an account before sending you to Stripe. Use the pricing form so your entitlement, magic link, and workspace token can be created after payment.</p>
+      <p><a class="button primary" href="/#pricing">Return to pricing</a></p>
+    </main>
+  `);
 }
 
 function checkoutCancelPage(env: Env): string {
-  return layout(env, "Baseline.ai Pro checkout canceled", `
+  return layout(env, {
+    title: "Baseline.ai Pro checkout canceled",
+    description: "Baseline Pro checkout cancellation page with local CLI recovery path.",
+    path: "/checkout/cancel",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="doc">
       <p class="eyebrow">Checkout canceled</p>
       <h1>No Pro subscription was started.</h1>
@@ -998,114 +1555,184 @@ function checkoutCancelPage(env: Env): string {
       <p><a class="button secondary" href="/">Return home</a></p>
     </main>
     <script>window.datafast && window.datafast("checkout_return_cancel", { plan: "pro", provider: "stripe" });</script>
-  `, softwareJsonLD(env));
+  `);
 }
 
 function dashboardPage(env: Env): string {
-  return layout(env, "Baseline.ai Dashboard", `
+  return layout(env, {
+    title: "Baseline.ai Dashboard",
+    description: "Baseline dashboard for latest coding-agent health, drift risk, and next operator action.",
+    path: "/dashboard",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="dashboard">
       <section class="dashHead">
         <div>
           <p class="eyebrow">Visual dashboard</p>
           <h1 id="dashboard-summary">Loading latest baseline run.</h1>
+          <p class="bodyText">Baseline turns synced local runs into a simple operator answer: what changed, what is risky, and what to do next.</p>
         </div>
         <a class="button secondary" href="/docs/mcp">Connect MCP</a>
       </section>
+      <div id="dashboard-demo-banner" class="alert warning" hidden>Example data. Account-private Pro runs are visible only after authenticated account access.</div>
       ${dashboardVisual(true)}
       <section class="band two">
-        <div class="panel">
-          <h2>Latest findings</h2>
-          <div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div>
-        </div>
-        <div class="panel">
-          <h2>Recent runs</h2>
-          <table id="run-timeline">
-            <tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>
-          </table>
-        </div>
+        <div class="panel"><h2>What changed since the last run?</h2><div id="changed-since-last"><div class="alert warning">Waiting for at least one synced Baseline run.</div></div></div>
+        <div class="panel"><h2>Current risk</h2><div id="current-risk"><div class="alert warning">Loading risk summary.</div></div></div>
+        <div class="panel"><h2>Next operator action</h2><div id="next-action"><div class="alert warning">Loading recommended next step.</div></div></div>
+        <div class="panel"><h2>Install-to-value path</h2><p>Use the local loop first. Pro history is useful only after the workstation is producing reviewed, redacted runs.</p><pre><code>baseline setup
+baseline report
+baseline accept RUN_ID \\
+  --confirm "accept RUN_ID"
+baseline run
+baseline compare</code></pre></div>
+        <div class="panel"><h2>Latest findings</h2><div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div></div>
+        <div class="panel"><h2>Recent runs</h2><table id="run-timeline"><tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr></table></div>
       </section>
     </main>
     ${dashboardScript()}
-  `, softwareJsonLD(env));
+  `);
 }
 
 function adminPage(env: Env): string {
   const configured = Boolean(env.BASELINE_ADMIN_TOKEN);
-  return layout(env, "Baseline.ai Admin", `
+  const evaluatorMode = env.OPENAI_API_KEY ? `OpenAI evaluator configured (${escapeHTML(env.OPENAI_EVALUATOR_MODEL || "default model")}).` : "Heuristic evaluator active until OPENAI_API_KEY is configured.";
+  return layout(env, {
+    title: "Baseline.ai Admin",
+    description: "Protected Baseline admin console for question sets and evaluator runs.",
+    path: "/admin",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="doc admin">
       <p class="eyebrow">Admin</p>
       <h1>Canonical question sets</h1>
-      <p>Version the baseline packs that every local agent run is compared against. Mutations require <code>BASELINE_ADMIN_TOKEN</code>; evaluations use OpenAI structured outputs when <code>OPENAI_API_KEY</code> is configured, otherwise they use the local heuristic evaluator.</p>
+      <p>Version the baseline packs that every local agent run is compared against. Mutations require the Worker secret-backed admin token; evaluations use OpenAI structured outputs when configured, otherwise they use the local heuristic evaluator.</p>
+      <div class="alert ${env.OPENAI_API_KEY ? "ok" : "warning"}">Evaluator mode: ${evaluatorMode}</div>
       ${configured ? "" : `<div class="alert warning">Admin token is not configured. Set <code>BASELINE_ADMIN_TOKEN</code> as a Worker secret before saving changes.</div>`}
-      <label>Admin token <input id="admin-token" type="password" autocomplete="off" placeholder="BASELINE_ADMIN_TOKEN"></label>
-      <div class="actions adminActions">
-        <button class="button primary" id="load-question-sets" type="button">Load sets</button>
-        <button class="button secondary" id="run-evaluator" type="button">Evaluate latest run</button>
+      <label>Worker secret-backed admin token <input id="admin-token" type="password" autocomplete="off" placeholder="BASELINE_ADMIN_TOKEN"></label>
+      <div class="adminPanelGrid">
+        <section class="panel"><h2>Load question sets</h2><p>Read the active canonical packs through the existing admin question-set API.</p><button class="button primary" id="load-question-sets" type="button">Load question sets</button></section>
+        <section class="panel"><h2>Save version</h2><p>Persist the JSON below as a new or updated canonical question-set version.</p><button class="button primary" id="save-question-set" type="button">Save version</button></section>
+        <section class="panel"><h2>Evaluate latest run</h2><p>Use the current JSON slug/version to evaluate the latest synced run.</p><button class="button secondary" id="run-evaluator" type="button">Evaluate latest run</button></section>
+        <section class="panel"><h2>View evaluations</h2><p>Load recent evaluation records from the existing evaluations endpoint.</p><button class="button secondary" id="view-evaluations" type="button">View evaluations</button></section>
+        <section class="panel"><h2>Recent leads</h2><p>List lead-magnet requests from the shared event table so resource conversions are actionable.</p><button class="button secondary" id="view-leads" type="button">View leads</button></section>
+        <section class="panel pilotPanel">
+          <h2>Invite pilot</h2>
+          <p>Grant a hand-held Pro or Team pilot, send the account magic link, and make a lead actionable today.</p>
+          <label for="pilot-email">Lead email</label>
+          <input id="pilot-email" type="email" autocomplete="email" placeholder="buyer@example.com">
+          <label for="pilot-plan">Plan</label>
+          <select id="pilot-plan">
+            <option value="pro">Pro pilot</option>
+            <option value="team">Team pilot</option>
+          </select>
+          <label class="checkLabel"><input id="pilot-grant" type="checkbox" checked> Grant pilot entitlement</label>
+          <button class="button primary" id="invite-pilot" type="button">Invite pilot</button>
+        </section>
       </div>
       <h2>Question set JSON</h2>
       <textarea id="question-set-json" spellcheck="false">${escapeHTML(JSON.stringify(defaultQuestionSet(), null, 2))}</textarea>
-      <div class="actions adminActions">
-        <button class="button primary" id="save-question-set" type="button">Save version</button>
-      </div>
       <h2>Output</h2>
       <pre id="admin-output"><code>Ready.</code></pre>
     </main>
     ${adminScript()}
-  `, softwareJsonLD(env));
+  `);
 }
 
 function mcpDocsPage(env: Env): string {
   const install = `curl -fsSL ${baseURL(env)}/install.sh | sh
+baseline --version
+baseline doctor
 baseline setup
+baseline run --mode fast
 baseline report
 baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
-openclaw mcp list
 baseline compare`;
-  return layout(env, "Baseline MCP installation", `
+  const mcpSmoke = `printf '%s\\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | baseline serve mcp`;
+  return layout(env, {
+    title: "Baseline MCP installation",
+    description: "Install Baseline CLI and configure the seven-tool MCP server for Codex, Hermes, OpenClaw, and coding-agent health checks.",
+    path: "/docs/mcp",
+    structuredData: softwareJsonLD(env)
+  }, `
     <main class="doc">
       <p class="eyebrow">MCP installation</p>
-      <h1>Install Baseline into OpenClaw</h1>
-      <p>Baseline exposes seven legible MCP tools: setup, run, doctor, report, accept, schedule, and scrub preview. The CLI binary is a free local runner; Pro charges for cloud history, workspace tokens, remote MCP account operations, monitoring, and billing-backed retention.</p>
-      <pre><code>${escapeHTML(install)}</code></pre>
+      <h1>Install Baseline, run a check, accept a clean run.</h1>
+      <p class="summaryBlock">Baseline is a local CLI and MCP server for coding-agent workstation health. It runs probes against your approved agent target, writes local reports, and compares future runs against the clean baseline you explicitly accept.</p>
+      ${copyCommandBlock(install, "Setup -> run -> accept -> compare")}
+      <h2>Universal MCP smoke</h2>
+      <p>Run this before debugging a client-specific plugin. It lists the local MCP tools without starting an agent eval.</p>
+      ${copyCommandBlock(mcpSmoke, "Universal MCP smoke")}
+      <h2>Client setup paths</h2>
+      <table><tr><th>Client</th><th>Register</th><th>Verify</th></tr>
+        <tr><td>Codex plugin</td><td>Install the Baseline plugin from the local marketplace after the CLI is on PATH.</td><td><code>baseline --version</code>, then plugin tools include Baseline.</td></tr>
+        <tr><td>Hermes native MCP</td><td>Add <code>baseline</code> with command <code>baseline serve mcp</code> under <code>mcp_servers</code>.</td><td><code>hermes mcp list</code> and <code>hermes mcp test baseline</code>.</td></tr>
+        <tr><td>OpenClaw</td><td>Install the plugin or configure manual stdio MCP with <code>baseline serve mcp</code>.</td><td><code>openclaw mcp list</code> after restarting the gateway.</td></tr>
+      </table>
+      <p><strong>Side effects:</strong> <code>baseline doctor</code> is read-only. <code>baseline setup</code>, <code>baseline run</code>, and scheduled runs send the configured probe messages and write local Baseline artifacts.</p>
       <h2>Distribution</h2>
       <p>The installer downloads the latest checksummed release asset for macOS or Linux from GitHub Releases, verifies <code>checksums.txt</code>, and installs <code>baseline</code> into <code>~/.local/bin</code> by default. Set <code>BASELINE_INSTALL_DIR</code> for a different destination or <code>BASELINE_VERSION</code> for a pinned release.</p>
-      <pre><code>curl -fsSL ${escapeHTML(baseURL(env))}/install.sh | BASELINE_INSTALL_DIR=/usr/local/bin sh
-curl -fsSL ${escapeHTML(baseURL(env))}/install.sh | BASELINE_VERSION=v0.1.0 sh</code></pre>
+      ${copyCommandBlock(`curl -fsSL ${baseURL(env)}/install.sh | BASELINE_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL ${baseURL(env)}/install.sh | BASELINE_VERSION=v0.1.0 sh`, "Pinned or custom install")}
+      <h2>Operator guides</h2>
+      <div class="blogGrid contentIndex">
+        ${contentCardByPath("/guides/coding-agent-health-check")}
+        ${contentCardByPath("/guides/mcp-server-health-check")}
+        ${contentCardByPath("/resources/mcp-debugging-cheatsheet")}
+      </div>
       <h2>Cloud sync</h2>
-      <pre><code>baseline sync on --url ${escapeHTML(baseURL(env))} --token YOUR_BASELINE_TOKEN
+      <p>Cloud sync is optional. The local product works without an account; Pro adds redacted history, workspaces, retention, and remote MCP account operations after a local runner is already producing scrubbed summaries.</p>
+      ${copyCommandBlock(`baseline sync on --url ${baseURL(env)} --token YOUR_BASELINE_TOKEN
 baseline doctor
-baseline sync push</code></pre>
+baseline sync push`, "Optional Pro sync")}
       <h2>Remote MCP</h2>
       <p>Pro accounts can also connect to the cloud MCP at <code>${escapeHTML(baseURL(env))}/mcp</code>. The remote MCP never runs local probes; it reads account history, hotspots, self-history comparisons, workspace tokens, and Stripe portal handoffs after magic-link session auth.</p>
-      <pre><code>POST ${escapeHTML(baseURL(env))}/api/auth/magic-link
-POST ${escapeHTML(baseURL(env))}/api/auth/consume
+      ${copyCommandBlock(`POST ${baseURL(env)}/api/auth/magic-link
+POST ${baseURL(env)}/api/auth/consume
 Authorization: Bearer YOUR_SESSION_TOKEN
-POST ${escapeHTML(baseURL(env))}/mcp</code></pre>
+POST ${baseURL(env)}/mcp`, "Remote MCP sequence")}
       <h2>Safety model</h2>
       <p>The MCP can read what the connected agent gives it. Baseline defaults to local SQLite and redacted summaries. Raw outputs are not exported unless <code>allow_raw_output</code> is enabled in <code>~/.baseline/config.json</code>.</p>
       <h2>Recommended first Good Baseline</h2>
-      <pre><code>baseline setup
-baseline report
+      <p>Run the sequence once before important work. If the report shows the wrong workspace, missing MCP tools, unsafe scrub output, or surprising latency, repair the workstation before accepting the run.</p>
+      ${copyCommandBlock(`baseline setup
+baseline run --mode fast
+baseline report RUN_ID
 baseline accept RUN_ID --confirm "accept RUN_ID" --label clean-local
-baseline compare</code></pre>
+baseline compare`, "First Good Baseline")}
     </main>
-  `, softwareJsonLD(env));
+  `);
 }
 
 function privacyPage(env: Env): string {
-  return layout(env, "Baseline.ai Privacy", `
+  return layout(env, {
+    title: "Baseline.ai Privacy",
+    description: "Baseline privacy notes for local-first agent health checks and redacted cloud sync.",
+    path: "/privacy"
+  }, `
     <main class="doc"><h1>Privacy</h1><p>Baseline is local-first. Cloud sync stores run summaries, health scores, findings, and redacted observation hashes. Raw prompts and outputs are not required for v0 cloud sync.</p><p>API tokens can be revoked by deleting them from the local config and dashboard. Synthetic and user-provided redaction checks run before export.</p></main>
   `);
 }
 
 function termsPage(env: Env): string {
-  return layout(env, "Baseline.ai Terms", `
+  return layout(env, {
+    title: "Baseline.ai Terms",
+    description: "Baseline terms for coding-agent health monitoring and local-first workstation checks.",
+    path: "/terms"
+  }, `
     <main class="doc"><h1>Terms</h1><p>Baseline v0 is a monitoring and alerting tool for agent workstations. It does not guarantee task correctness, security compliance, or model behavior. Users remain responsible for reviewing agent outputs before production use.</p></main>
   `);
 }
 
 function notFoundPage(env: Env): string {
-  return layout(env, "Not found", `<main class="doc"><h1>Not found</h1><p>The page does not exist.</p></main>`);
+  return layout(env, {
+    title: "Not found",
+    description: "The requested Baseline page was not found.",
+    path: "/404",
+    noindex: true
+  }, `<main class="doc"><h1>Not found</h1><p>The page does not exist.</p></main>`);
 }
 
 function dashboardVisual(live = false): string {
@@ -1128,39 +1755,102 @@ function dashboardVisual(live = false): string {
   `;
 }
 
+function checkoutSuccessScript(): string {
+  return `<script>
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("session_id") || "";
+      const statusBox = document.getElementById("checkout-session-status");
+      const form = document.querySelector("[data-magic-link-form]");
+      const emailInput = form && form.querySelector('input[name="email"]');
+      const status = form && form.querySelector("[data-magic-link-status]");
+      const button = form && form.querySelector("button");
+      const write = function(message){ if (status) status.textContent = message; };
+      const setBox = function(message, klass){
+        if (!statusBox) return;
+        statusBox.className = "alert " + klass;
+        statusBox.textContent = message;
+      };
+      if (sessionId) {
+        fetch("/api/checkout/session?session_id=" + encodeURIComponent(sessionId), { headers: { "accept": "application/json" } })
+          .then(function(resp){ return resp.json().then(function(body){ return { ok: resp.ok, body: body }; }); })
+          .then(function(result){
+            if (!result.ok) throw new Error(result.body && result.body.error || "session check failed");
+            const hint = result.body.entitlement_hint;
+            if (result.body.email_hint && emailInput) emailInput.value = result.body.email_hint;
+            setBox(hint && hint.monitoring_enabled ? "Stripe confirmed. Request your magic link below to create a workspace token." : "Stripe returned. If webhook processing is still pending, request the magic link and retry token creation after a minute.", hint && hint.monitoring_enabled ? "ok" : "warning");
+          })
+          .catch(function(){ setBox("Stripe returned. Request your magic link with the checkout email below.", "warning"); });
+      } else {
+        setBox("No session id was attached. Request your magic link with the checkout email below.", "warning");
+      }
+      form && form.addEventListener("submit", async function(event){
+        event.preventDefault();
+        if (!button || !emailInput) return;
+        const email = String(emailInput.value || "").trim();
+        if (!email) {
+          write("Enter the email used at checkout.");
+          return;
+        }
+        button.disabled = true;
+        write("Sending magic link...");
+        try {
+          const response = await fetch("/api/auth/magic-link", {
+            method: "POST",
+            headers: { "content-type": "application/json", "accept": "application/json" },
+            body: JSON.stringify({ email: email })
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "magic link failed");
+          window.datafast && window.datafast("magic_link_requested", { location: "checkout_success" });
+          write("Check that inbox for the Baseline account link. After opening it, create a workspace token from the account API.");
+        } catch (error) {
+          write(error && error.message ? String(error.message) : "Magic link could not be sent.");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    })();
+  </script>`;
+}
+
 function proAccountScript(): string {
   return `<script>
     (function(){
-      const form = document.querySelector("[data-checkout-form]");
-      const status = form && form.querySelector("[data-checkout-status]");
-      const button = form && form.querySelector("button");
+      document.querySelectorAll("[data-checkout-form]").forEach(function(form){
+      const status = form.querySelector("[data-checkout-status]");
+      const button = form.querySelector("button");
       const write = function(message){ if (status) status.textContent = message; };
-      form && form.addEventListener("submit", async function(event){
+      form.addEventListener("submit", async function(event){
         event.preventDefault();
         if (!button) return;
         const data = new FormData(form);
         const email = String(data.get("email") || "").trim();
+        const plan = String(form.getAttribute("data-plan") || "pro");
+        const price = String(form.getAttribute("data-price") || (plan === "team" ? "129" : "39"));
         if (!email) {
           write("Enter an email to open checkout.");
           return;
         }
         button.disabled = true;
         write("Opening Stripe checkout...");
-        window.datafast && window.datafast("checkout_start", { plan: "pro", price: "39", currency: "usd", location: "pricing_form" });
+        window.datafast && window.datafast("checkout_start", { plan: plan, price: price, currency: "usd", location: "pricing_form" });
         try {
           const response = await fetch("/api/checkout", {
             method: "POST",
             headers: { "content-type": "application/json", "accept": "application/json" },
-            body: JSON.stringify({ plan: "pro", email, successUrl: location.origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", cancelUrl: location.origin + "/checkout/cancel" })
+            body: JSON.stringify({ plan: plan, email, successUrl: location.origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", cancelUrl: location.origin + "/checkout/cancel" })
           });
           const payload = await response.json();
           if (!response.ok || !payload.url) throw new Error(payload.error || "checkout_failed");
-          window.datafast && window.datafast("checkout_redirect", { plan: "pro", provider: "stripe" });
+          window.datafast && window.datafast("checkout_redirect", { plan: plan, provider: "stripe" });
           window.location.assign(payload.url);
         } catch (error) {
-          write("Checkout is not configured yet. The local CLI is still free.");
+          const message = error && error.message ? String(error.message) : "Checkout could not start.";
+          write(message + " Email help@trackbaseline.com and keep the CLI running locally.");
           button.disabled = false;
         }
+      });
       });
     })();
   </script>`;
@@ -1170,24 +1860,37 @@ function dashboardScript(): string {
   return `<script>
     (async function(){
       const text = function(value){ return String(value == null ? "" : value); };
+      const esc = function(value){ const div = document.createElement("div"); div.textContent = text(value); return div.innerHTML; };
       const shortRun = function(id){ return text(id).replace(/^run_/, "").slice(0, 12) || "no-run"; };
       const setText = function(id, value){ const el = document.getElementById(id); if (el) el.textContent = value; };
-      const statusClass = function(status){ return status === "ok" ? "ok" : (status === "critical" ? "bad" : "warning"); };
+      const setHTML = function(id, value){ const el = document.getElementById(id); if (el) el.innerHTML = value; };
+      const statusClass = function(status){ return status === "ok" ? "ok" : (status === "critical" || status === "fail" || status === "failed" ? "bad" : "warning"); };
+      const actionFor = function(status, warnings){
+        if (status === "ok" && warnings === 0) return "Review the report, then accept this run if it deserves to become the Good Baseline.";
+        if (status === "critical" || status === "fail" || status === "failed") return "Stop and repair the failing setup before accepting a new baseline.";
+        return "Open the report, inspect warnings, then rerun after setup is clean.";
+      };
       try {
         const latestResp = await fetch("/api/runs/latest", { headers: { "accept": "application/json" } });
         const latest = await latestResp.json();
         const run = latest.run || {};
+        const demo = latest.configured === false || latest.demo === true || run.run_id === "demo_run";
+        const demoBanner = document.getElementById("dashboard-demo-banner");
+        if (demoBanner) demoBanner.hidden = !demo;
         const score = Number(run.health_score || 0);
-        setText("dashboard-summary", "Latest " + text(run.agent_kind || "agent") + " run is " + text(run.status || "unknown") + " with score " + score + ".");
+        const checks = Array.isArray(run.checks) ? run.checks : [];
+        const warnings = Number(run.warning_count == null ? checks.filter(function(check){ return check.status !== "ok"; }).length : run.warning_count);
+        const duration = Number(run.duration_ms || 0);
+        const status = text(run.status || "unknown");
+        setText("dashboard-summary", (demo ? "Example " : "Latest ") + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
         setText("frame-run", "baseline " + shortRun(run.run_id));
         setText("frame-score", "score " + score);
         setText("health-score", String(score));
-        const checks = Array.isArray(run.checks) ? run.checks : [];
         const signals = document.getElementById("signal-list");
         if (signals) {
           const rows = checks.slice(0, 5).map(function(check){
             const klass = check.status === "ok" ? "okDot" : (check.status === "critical" ? "badDot" : "warnDot");
-            return "<p><span class=\\"dot " + klass + "\\"></span>" + text(check.check_id || check.kind || "check") + " " + text(check.status || "unknown") + "</p>";
+            return "<p><span class=\\"dot " + klass + "\\"></span>" + esc(check.check_id || check.kind || "check") + " " + esc(check.status || "unknown") + "</p>";
           });
           signals.innerHTML = rows.length ? rows.join("") : "<p><span class=\\"dot warnDot\\"></span>No checks received</p>";
         }
@@ -1195,26 +1898,32 @@ function dashboardScript(): string {
         if (findings) {
           const bad = checks.filter(function(check){ return check.status !== "ok"; }).slice(0, 6);
           findings.innerHTML = (bad.length ? bad : checks.slice(0, 3)).map(function(check){
-            return "<div class=\\"alert " + statusClass(check.status) + "\\">" + text(check.check_id || "check") + ": " + text(check.status || "unknown") + " · " + Math.round(Number(check.score || 0)) + "</div>";
+            return "<div class=\\"alert " + statusClass(check.status) + "\\">" + esc(check.check_id || "check") + ": " + esc(check.status || "unknown") + " · " + Math.round(Number(check.score || 0)) + "</div>";
           }).join("") || "<div class=\\"alert warning\\">No synced checks yet.</div>";
         }
         const grid = document.getElementById("probe-grid");
         if (grid) {
           grid.innerHTML = checks.slice(0, 8).map(function(check){
-            return "<div><strong>" + text(check.kind || check.check_id || "probe") + "</strong><span>" + text(check.status || "unknown") + "</span></div>";
+            return "<div><strong>" + esc(check.kind || check.check_id || "probe") + "</strong><span>" + esc(check.status || "unknown") + "</span></div>";
           }).join("");
         }
         const timelineResp = await fetch("/api/runs/timeline", { headers: { "accept": "application/json" } });
         const timeline = await timelineResp.json();
+        const runs = Array.isArray(timeline.runs) ? timeline.runs : [];
+        const previous = runs.length > 1 ? runs[1] : null;
+        const scoreDelta = previous ? score - Number(previous.health_score || 0) : 0;
+        setHTML("changed-since-last", previous ? "<div class=\\"alert " + (scoreDelta < 0 ? "warning" : "ok") + "\\">Score changed " + (scoreDelta >= 0 ? "+" : "") + scoreDelta + " since " + esc(shortRun(previous.run_id)) + ". Current mode: " + esc(run.mode || "unknown") + "; duration: " + Math.round(duration) + "ms.</div>" : "<div class=\\"alert warning\\">First synced run loaded. Run Baseline again to show drift against recent history.</div>");
+        setHTML("current-risk", "<div class=\\"alert " + statusClass(status) + "\\">Status " + esc(status) + ", score " + score + ", warnings " + warnings + ".</div>");
+        setHTML("next-action", "<div class=\\"alert " + (status === "ok" && warnings === 0 ? "ok" : "warning") + "\\">" + esc(actionFor(status, warnings)) + "</div>");
         const table = document.getElementById("run-timeline");
         if (table) {
-          const runs = Array.isArray(timeline.runs) ? timeline.runs : [];
           table.innerHTML = "<tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>" + runs.slice(0, 12).map(function(row){
-            return "<tr><td>" + shortRun(row.run_id) + "</td><td>" + Number(row.health_score || 0) + "</td><td>" + text(row.status || "unknown") + "</td><td>" + text(row.mode || "unknown") + "</td></tr>";
+            return "<tr><td>" + esc(shortRun(row.run_id)) + "</td><td>" + Number(row.health_score || 0) + "</td><td>" + esc(row.status || "unknown") + "</td><td>" + esc(row.mode || "unknown") + "</td></tr>";
           }).join("");
         }
       } catch (error) {
         setText("dashboard-summary", "Dashboard could not load run data.");
+        setHTML("next-action", "<div class=\\"alert warning\\">Run baseline setup locally, then sync a redacted run before relying on the dashboard.</div>");
       }
     })();
   </script>`;
@@ -1256,18 +1965,37 @@ function adminScript(): string {
           write(await adminFetch("/api/admin/evaluate", { method: "POST", body: JSON.stringify({ slug: payload.slug, version: payload.version }) }));
         } catch (error) { write(error); }
       });
+      document.getElementById("view-evaluations")?.addEventListener("click", async function(){
+        try { write(await adminFetch("/api/admin/evaluations")); } catch (error) { write(error); }
+      });
+      document.getElementById("view-leads")?.addEventListener("click", async function(){
+        try { write(await adminFetch("/api/admin/leads")); } catch (error) { write(error); }
+      });
+      document.getElementById("invite-pilot")?.addEventListener("click", async function(){
+        try {
+          const email = document.getElementById("pilot-email")?.value || "";
+          const plan = document.getElementById("pilot-plan")?.value || "pro";
+          const pilot = document.getElementById("pilot-grant")?.checked !== false;
+          write(await adminFetch("/api/admin/invites", { method: "POST", body: JSON.stringify({ email, plan, role: "owner", pilot }) }));
+        } catch (error) { write(error); }
+      });
     })();
   </script>`;
 }
 
-function layout(env: Env, title: string, body: string, structuredData = ""): string {
+function layout(env: Env, meta: PageMeta, body: string): string {
+  const canonical = meta.canonical || baseURL(env) + meta.path;
+  const ogImage = meta.ogImage || baseURL(env) + "/assets/baseline-court-robot.png";
+  const robots = meta.noindex ? `<meta name="robots" content="noindex,follow">` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHTML(title)}</title>
-  <meta name="description" content="Local-first baseline checks and Pro monitoring for coding agents, MCP tools, repo awareness, memory, latency, and style.">
+  <title>${escapeHTML(meta.title)}</title>
+  <meta name="description" content="${escapeHTML(meta.description)}">
+  ${robots}
+  <link rel="canonical" href="${escapeHTML(canonical)}">
   <meta name="theme-color" content="#071419">
   <meta name="apple-mobile-web-app-title" content="Baseline">
   <link rel="icon" href="/favicon.ico" sizes="any">
@@ -1275,12 +2003,13 @@ function layout(env: Env, title: string, body: string, structuredData = ""): str
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta property="og:title" content="${escapeHTML(title)}">
-  <meta property="og:description" content="Keep coding agents inside the lines with known-good checks, redacted run history, and practical drift alerts.">
+  <meta property="og:title" content="${escapeHTML(meta.title)}">
+  <meta property="og:description" content="${escapeHTML(meta.description)}">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="${escapeHTML(baseURL(env))}/assets/baseline-court-robot.png">
+  <meta property="og:url" content="${escapeHTML(canonical)}">
+  <meta property="og:image" content="${escapeHTML(ogImage)}">
   <style>${css()}</style>
-  ${structuredData}
+  ${meta.structuredData || ""}
   <script id="datafast-queue">
     window.datafast = window.datafast || function() {
       window.datafast.q = window.datafast.q || [];
@@ -1305,6 +2034,102 @@ function layout(env: Env, title: string, body: string, structuredData = ""): str
     document.querySelectorAll('a[href^="/api/checkout"], a[href="/docs/mcp"]').forEach(function(a){
       a.addEventListener('click', function(){ navigator.sendBeacon && navigator.sendBeacon('/api/events', JSON.stringify({type:'cta_click', path: location.pathname, href: a.getAttribute('href')})); });
     });
+    document.querySelectorAll('[data-copy-value]').forEach(function(button){
+      button.addEventListener('click', async function(){
+        var value = button.getAttribute('data-copy-value') || '';
+        var originalLabel = button.getAttribute('data-copy-label') || button.textContent || 'copy';
+        try {
+          var copied = false;
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+            copied = true;
+          } else {
+            var area = document.createElement('textarea');
+            area.value = value;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            copied = document.execCommand('copy');
+            area.remove();
+          }
+          if (!copied) throw new Error('copy_failed');
+          button.textContent = 'copied';
+          navigator.sendBeacon && navigator.sendBeacon('/api/events', JSON.stringify({type:'copy_install_command', path: location.pathname}));
+          window.setTimeout(function(){ button.textContent = originalLabel; }, 1600);
+        } catch (error) {
+          button.textContent = 'copy failed';
+          window.setTimeout(function(){ button.textContent = originalLabel; }, 1800);
+        }
+      });
+    });
+    document.querySelectorAll('[data-resource-form]').forEach(function(form){
+      form.addEventListener('submit', async function(event){
+        event.preventDefault();
+        var status = form.querySelector('[data-resource-status]');
+        var button = form.querySelector('button[type="submit"]');
+        var email = form.querySelector('input[name="email"]');
+        var context = form.querySelector('input[name="context"]');
+        var website = form.querySelector('input[name="website"]');
+        if (status) status.textContent = 'Recording request...';
+        if (button) button.disabled = true;
+        try {
+          var payload = {
+            type: 'lead_magnet_request',
+            path: location.pathname,
+            resource: form.getAttribute('data-resource') || location.pathname,
+            email: email && email.value ? email.value.trim() : '',
+            context: context && context.value ? context.value.trim() : '',
+            website: website && website.value ? website.value.trim() : ''
+          };
+          window.datafast && window.datafast('lead_magnet_request', { resource: payload.resource, location: location.pathname });
+          var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
+          var body = await response.json();
+          if (!response.ok) throw new Error(body && body.error || 'request_failed');
+          if (status) status.textContent = 'Request recorded. Use the worksheet above now; the follow-up request is in.';
+          form.reset();
+        } catch (error) {
+          if (status) status.textContent = 'The worksheet is still here. Try again if you want the follow-up prompt.';
+        } finally {
+          if (button) button.disabled = false;
+        }
+      });
+    });
+    document.querySelectorAll('[data-pilot-form]').forEach(function(form){
+      form.addEventListener('submit', async function(event){
+        event.preventDefault();
+        var status = form.querySelector('[data-pilot-status]');
+        var button = form.querySelector('button[type="submit"]');
+        var email = form.querySelector('input[name="email"]');
+        var plan = form.querySelector('select[name="plan"]');
+        var context = form.querySelector('input[name="context"]');
+        var website = form.querySelector('input[name="website"]');
+        if (status) status.textContent = 'Recording pilot request...';
+        if (button) button.disabled = true;
+        try {
+          var payload = {
+            type: 'pilot_request',
+            path: location.pathname,
+            resource: 'pricing_pilot_request',
+            plan: plan && plan.value ? plan.value : 'pro',
+            email: email && email.value ? email.value.trim() : '',
+            context: context && context.value ? context.value.trim() : '',
+            website: website && website.value ? website.value.trim() : ''
+          };
+          window.datafast && window.datafast('pilot_request', { plan: payload.plan, location: location.pathname });
+          var response = await fetch('/api/events', { method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(payload) });
+          var body = await response.json();
+          if (!response.ok) throw new Error(body && body.error || 'request_failed');
+          if (status) status.textContent = 'Pilot request recorded. Keep the local CLI handy; the invite path starts with a magic link.';
+          form.reset();
+        } catch (error) {
+          if (status) status.textContent = error && error.message ? String(error.message) : 'Pilot request could not be recorded.';
+        } finally {
+          if (button) button.disabled = false;
+        }
+      });
+    });
   </script>
 </body>
 </html>`;
@@ -1314,6 +2139,7 @@ function css(): string {
   return `
     :root { color-scheme: light; --ink:#071419; --graphite:#142124; --muted:#586569; --paper:#f3ebdc; --cream:#fff9ea; --line:#10191b; --court:#0e5960; --court-soft:#d6e7e4; --clay:#bb7357; --lime:#d9f45d; --blue:#2d6f9f; --green:#166b48; --amber:#a15c00; --red:#b42318; --shadow:5px 5px 0 #071419; --display:"Avenir Next Condensed","DIN Condensed","Franklin Gothic Condensed",Impact,sans-serif; --body:"Avenir Next","Gill Sans","Trebuchet MS",system-ui,sans-serif; --mono:"SFMono-Regular",Consolas,monospace; }
     * { box-sizing: border-box; }
+    [hidden] { display:none !important; }
     html { scroll-behavior:smooth; }
     body { margin:0; font-family:var(--body); color:var(--ink); background:repeating-linear-gradient(90deg, rgba(7,20,25,.045) 0 1px, transparent 1px 68px), repeating-linear-gradient(0deg, rgba(187,115,87,.08) 0 1px, transparent 1px 68px), var(--paper); letter-spacing:0; font-size:18px; line-height:1.5; overflow-x:clip; }
     a { color:inherit; text-decoration:none; }
@@ -1418,9 +2244,30 @@ function css(): string {
     .doc h1 { font-size:4rem; line-height:.95; }
     .doc h2 { border-top:3px solid var(--line); font-size:2.2rem; margin-top:40px; padding-top:28px; }
     .admin label { display:block; color:var(--muted); font-weight:900; margin:18px 0 8px; }
-    .admin input, .admin textarea { width:100%; border:2px solid var(--line); border-radius:8px; padding:12px; font:inherit; color:var(--ink); background:#fff; }
+    .admin input, .admin textarea, .admin select { width:100%; border:2px solid var(--line); border-radius:8px; padding:12px; font:inherit; color:var(--ink); background:#fff; }
     .admin textarea { min-height:430px; font-family:var(--mono); font-size:13px; line-height:1.45; resize:vertical; }
     .adminActions { margin:14px 0 26px; }
+    .adminPanelGrid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; margin:24px 0; }
+    .checkLabel { display:flex !important; gap:10px; align-items:center; color:var(--ink) !important; }
+    .checkLabel input { width:auto; }
+    .pilotPanel .button { margin-top:12px; width:100%; }
+    #dashboard-demo-banner { margin:0 max(28px, calc((100vw - 1180px) / 2)) 18px; }
+    .contentIndex { margin:18px 0 34px; }
+    .contentIndex a em, .contentIndex article em { display:block; margin-top:16px; font-family:var(--mono); font-style:normal; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--court); }
+    .contentIndex p { margin:0; font-size:14px; line-height:1.45; }
+    .ledeText { font-size:1.25rem; line-height:1.45; color:var(--fence); }
+    .resourceMeta { display:grid; gap:8px; padding:16px; margin:24px 0; border:1px solid var(--ink); background:var(--paper); font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ash); }
+    .contentSections section + section { margin-top:22px; }
+    .resourceBox, .contentCta { margin-top:34px; padding:24px; border:1px solid var(--ink); background:var(--paper); }
+    .resourceBox ul { margin-bottom:0; }
+    .leadCapture { margin-top:34px; display:grid; grid-template-columns:minmax(0, 1fr) minmax(280px, .72fr); gap:24px; padding:24px; border:3px solid var(--ink); background:var(--cream); box-shadow:var(--shadow); }
+    .leadCapture h2 { border-top:0; margin:8px 0 10px; padding-top:0; font-size:2rem; }
+    .leadCapture p { margin:0; color:var(--fence); }
+    .leadCapture form { display:grid; gap:10px; align-content:start; }
+    .leadCapture input, .leadCapture select { min-height:46px; border:2px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:12px 14px; font:800 1rem/1 var(--body); width:100%; }
+    .leadCapture .btn { width:100%; }
+    .pilotCapture { margin-top:28px; }
+    .leadStatus { min-height:22px; font-size:12px; line-height:1.35; color:var(--ash); }
     footer { display:flex; flex-wrap:wrap; gap:20px; padding:30px max(20px, calc((100vw - 1180px) / 2)); color:var(--muted); border-top:3px solid var(--line); background:var(--paper); }
     :root { --bone:#ece2cf; --paper:#f5ede0; --paper-2:#faf4ea; --court:#b87560; --court-d:#8a4f3e; --sky:#8aa3ad; --sky-d:#5a747f; --fence:#2c3a42; --ink:#14110d; --ash:#6c6357; --line:#1a1612; --hairline:rgba(20,17,13,.14); --hairline-2:rgba(20,17,13,.08); --lime:#d9f45d; --green:#3d6b4a; --amber:#a15c00; --red:#b42318; --display:"Archivo","Archivo Narrow","Avenir Next Condensed","DIN Condensed",Impact,sans-serif; --body:"Archivo","Avenir Next",system-ui,sans-serif; --mono:"JetBrains Mono","SFMono-Regular",Consolas,monospace; }
     body { background:var(--bone); font-family:var(--body); color:var(--ink); }
@@ -1465,6 +2312,15 @@ function css(): string {
     .codeBlock { background:var(--ink); color:var(--paper); font-family:var(--mono); font-size:13px; padding:16px 18px; line-height:1.55; border:1px solid var(--ink); border-radius:0; overflow:auto; white-space:pre-wrap; }
     .codeBlock .cmt { color:var(--sky); }
     .codeBlock .key { color:#c89a8a; }
+    .copyCommand { border:1px solid var(--ink); background:var(--paper); }
+    .copyCommand + .copyCommand { margin-top:16px; }
+    .copyCommandTop { min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 12px 0 16px; border-bottom:1px solid var(--ink); font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ash); }
+    .copyCommandTop button { border:1px solid var(--ink); background:var(--bone); color:var(--ink); min-height:30px; padding:6px 10px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; cursor:pointer; }
+    .copyCommandTop button:hover { background:var(--ink); color:var(--bone); }
+    .copyCommand .codeBlock { margin:0; border:0; }
+    .summaryBlock { border-left:4px solid var(--court); padding-left:18px; color:var(--fence); font-size:18px; line-height:1.55; }
+    .fieldNote { border-top:1px solid var(--ink); padding-top:34px; margin-top:42px; }
+    .fieldNote p { max-width:820px; }
     .scoreboardSection, .dailySection, .probesSection, .pricingSection, .fieldNotes { padding:clamp(58px, 7vw, 88px) clamp(20px, 4vw, 56px); border-bottom:1px solid var(--ink); }
     .sectionTitleRow { display:flex; justify-content:space-between; align-items:flex-end; gap:28px; margin-bottom:32px; }
     .underLink { font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; text-decoration:underline; text-underline-offset:3px; color:var(--ink); white-space:nowrap; }
@@ -1567,7 +2423,8 @@ function css(): string {
       h1 { font-size:3.4rem; }
       h2, .doc h1 { font-size:2.4rem; }
       .lede { font-size:1.15rem; max-width:390px; }
-      .two, .metricStrip, .steps, .priceGrid, .scoreRow, .probeGrid, .docGrid, .imageBand, .pricing, .blogGrid { grid-template-columns:1fr; }
+      .two, .metricStrip, .steps, .priceGrid, .scoreRow, .probeGrid, .docGrid, .imageBand, .pricing, .blogGrid, .adminPanelGrid { grid-template-columns:1fr; }
+      .leadCapture { grid-template-columns:1fr; box-shadow:3px 3px 0 var(--ink); }
       .metricStrip div + div { border-left:0; border-top:3px solid var(--line); }
       .imageStack img:nth-child(2) { margin-left:0; width:100%; }
       .imageBand img, .imageBand img:nth-child(2) { height:auto; aspect-ratio:1 / 1; }
@@ -1626,8 +2483,37 @@ function softwareJsonLD(env: Env): string {
   })}</script>`;
 }
 
+function blogJsonLD(env: Env): string {
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    name: "Baseline.ai Field Notes",
+    description: "Field notes for coding-agent operators using Baseline to accept known-good runs, spot MCP drift, and monitor local workstation health.",
+    url: baseURL(env) + "/blog",
+    publisher: { "@type": "Organization", name: "Baseline.ai" },
+    blogPost: [
+      { "@type": "BlogPosting", headline: "How to accept a Good Baseline", url: baseURL(env) + "/blog#good-baseline" },
+      { "@type": "BlogPosting", headline: "MCP drift looks like nothing, until it costs a day", url: baseURL(env) + "/blog#mcp-drift" },
+      { "@type": "BlogPosting", headline: "The case against a leaderboard", url: baseURL(env) + "/blog#no-leaderboard" }
+    ]
+  })}</script>`;
+}
+
+function robotsTxt(origin: string): string {
+  return `User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /checkout/
+Sitemap: ${origin}/sitemap.xml
+`;
+}
+
 function sitemap(origin: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url><url><loc>${origin}/dashboard</loc></url><url><loc>${origin}/docs/mcp</loc></url><url><loc>${origin}/blog</loc></url><url><loc>${origin}/checkout/success</loc></url><url><loc>${origin}/checkout/cancel</loc></url></urlset>`;
+  const paths = ["/", "/docs/mcp", "/blog", "/privacy", "/terms", ...CONTENT_PAGES.map((page) => page.path)];
+  const urls = paths.map((path) => `<url><loc>${origin}${path === "/" ? "/" : path}</loc></url>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`;
 }
 
 function html(body: string, status = 200): Response {

@@ -12,35 +12,46 @@ openclaw plugins inspect baseline-ai
 
 Restart the OpenClaw Gateway after install so the embedded MCP settings reload.
 
-If the `baseline` command is not on `PATH`, install the Go binary first:
+If the `baseline` command is not on `PATH`, install the CLI first:
 
 ```sh
-go install github.com/apollostreetcompany/baseline/cmd/baseline@latest
+curl -fsSL https://trackbaseline.com/install.sh | sh
+baseline --version
+baseline doctor
 ```
+
+`baseline --version` should print `baseline 0.1.0`. `baseline doctor` is a read-only preflight smoke and does not send OpenClaw probe messages. Source installs can still use `go install github.com/apollostreetcompany/baseline/cmd/baseline@latest`.
 
 ## Local Dogfood Path
 
 Run exactly four commands for a local OpenClaw Good Baseline:
 
 ```sh
+baseline --version
+baseline doctor
 baseline setup
 baseline report
-baseline rerun <FAILED_RUN_ID>
 baseline accept <RUN_ID> --confirm "accept <RUN_ID>" --label clean-local
+baseline run
 baseline compare
 ```
+
+Use `baseline rerun <FAILED_RUN_ID>` only after reviewing a failed lifecycle report and stdout/stderr paths.
 
 Then run `baseline run` and `baseline compare` any time you want to check drift against the accepted Good Baselines. Use `baseline doctor` when you only want local preflight and do not want to send OpenClaw probe messages.
 
 `baseline setup` and `baseline run` default to the 14-question Baseline Core pack and write `REPORT.md`, `RESPONSES.md`, `RECEIPT.md`, and `metrics.json` under `~/.baseline/reports/<RUN_ID>/`. For OpenClaw targets, `baseline setup` also snapshots `~/.openclaw/openclaw.json` and ensures Codex app-server request and turn-idle timeouts are at least 900 seconds. Run `baseline run --packs enabled` only after the operator approves the wider pack set.
 
-Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete. To recover a failed lifecycle run after operator approval, call `baseline_run` with `rerun_id` or use CLI `baseline rerun <RUN_ID>`.
+Through MCP, `baseline_setup`, `baseline_run`, and `baseline_schedule` with `action:"run"` start the eval in the background and return `run_status.run_id`. Poll `baseline_report` with that run id until the report is complete. The advertised MCP surface stays at seven tools: `baseline_setup`, `baseline_run`, `baseline_doctor`, `baseline_report`, `baseline_accept`, `baseline_schedule`, and `baseline_scrub_preview`. To recover a failed lifecycle run after operator approval, call `baseline_run` with `rerun_id` or use CLI `baseline rerun <RUN_ID>`.
 
 Manual MCP registry fallback:
 
 ```sh
 openclaw mcp set baseline '{"command":"baseline","args":["serve","mcp"]}'
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | baseline serve mcp
 ```
+
+If that smoke fails with a missing CLI error, install the CLI or adjust OpenClaw's PATH. Do not add a version/preflight MCP tool; use `baseline --version` and `baseline doctor` outside MCP.
 
 ## Gateway Session Metrics
 
