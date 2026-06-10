@@ -16,7 +16,7 @@
   - Bead 32: Codex plugin readiness/build. `plugins/baseline/` is the v1 Codex plugin, `openclaw-plugin/` remains the legacy/OpenClaw compatibility bundle, and `baseline-codex-plugin.tgz` is now part of release packaging.
   - Bead 33: market-effectiveness pass for first organic customer path. Added eight guide routes, five lead resources, lead request capture/admin queue/Klaviyo events, dashboard/admin clarity, CLI `--version`, docs/package first-run guidance, and Worker deploy `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
   - Bead 34: commercial viability pass from fresh `subreview`. Added pilot request capture, admin pilot invite/grant UI, email-first Pro/Team checkout attribution, operational checkout success magic-link/token guidance, safe checkout-session status, public dashboard account-private filtering/demo labeling, account-scoped run upsert guard, and paid-pilot deployment docs.
-  - Bead 34 website clarity integration: the standalone `codex/feat/bead-34-website-clarity` branch was based before Bead 33/34 commercial work, so it must not be deployed directly. Its public copy, sample labels, copyable commands, field-note blog sections, metadata, robots, and sitemap improvements are integrated onto the commercial-viability branch before PR/deploy.
+  - Bead 34 website clarity integration: the standalone `codex/feat/bead-34-website-clarity` branch was based before Bead 33/34 commercial work, so it was not deployed directly. Its public copy, sample labels, copyable commands, field-note blog sections, metadata, robots, and sitemap improvements are integrated onto the commercial-viability branch and deployed as Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
@@ -52,8 +52,8 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 34 integration is staged from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on `codex/feat/bead-34-website-production-integration`.
-- Previous Bead 34 commercial Worker version `7940fc3a-f89e-4972-9352-e77424b541a6` is live on `https://trackbaseline.com`; rollback target is Bead 33 version `df4d479d-9fbd-4f8a-af50-b2f3a88253a8`.
+- Bead 34 integration is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on `codex/feat/bead-34-website-production-integration`.
+- Current Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` is live on `https://trackbaseline.com`; rollback target is previous Bead 34 commercial version `7940fc3a-f89e-4972-9352-e77424b541a6`.
 - Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
 
 ## Commands To Re-run
@@ -102,6 +102,7 @@
 - Bead 34 validation: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local Worker smokes on `http://localhost:8788`, Playwright screenshots, Wrangler deploy, and live smokes all passed except protected admin lead readback. Screenshots: `handoff/bead-34-pricing-pilot.png`, `handoff/bead-34-checkout-success.png`, `handoff/bead-34-admin-pilot.png`, `handoff/bead-34-dashboard-demo.png`.
 - Bead 34 live deploy: `wrangler deploy` with sourced Cloudflare env succeeded at Worker version `7940fc3a-f89e-4972-9352-e77424b541a6`. Live health returned all production surfaces configured (`db`, `stripe`, `lifecycle_email`, `pro_auth`, `pro_tokens`, `stripe_webhook`). Live homepage, checkout success, checkout email guard, invalid lead guard, and synthetic `codex-smoke+bead34@example.com` pilot request passed. `/api/admin/leads` readback is `UNCONFIRMED` from this shell because the local env did not include `BASELINE_ADMIN_TOKEN`; unauthenticated `401` was verified.
 - Bead 34 website clarity source: standalone commit `9b0e90e944520346c494585169f8131d32b3e111` on `codex/feat/bead-34-website-clarity` passed `make verify`, `git diff --check`, local Worker route smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, `/sitemap.xml`, Playwright desktop/mobile overflow checks, and copy-button feedback checks. Screenshots were saved under `/tmp/baseline-website-clarity-*.png`.
+- Bead 34 integration deploy: `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local route smokes for `/`, `/docs/mcp`, `/blog`, `/dashboard`, `/robots.txt`, `/sitemap.xml`, `/checkout/success`, and `/admin`, Wrangler deploy, and live smokes all passed. Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` serves the integrated website clarity plus commercial-viability surface. The high-severity audit gate passed with the known moderate Wrangler/Miniflare `ws` chain only.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.

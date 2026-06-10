@@ -5,10 +5,10 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `7940fc3a-f89e-4972-9352-e77424b541a6`
-- Current production source branch: `codex/feat/bead-34-commercial-viability`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-commercial-viability`
-- Notes: current production combines the Bead 25 cloud account/remote MCP surface, Bead 33 SEO/lead-magnet acquisition surface, and Bead 34 commercial-viability checkout/pilot path.
+- Current Version ID: `214cec6e-a79d-4360-8aa3-a19e2eb42939`
+- Current production source branch: `codex/feat/bead-34-website-production-integration`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration`
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, and the Bead 34 public website clarity pass.
 
 ## 2026-05-14 Cloudflare Deploy
 
@@ -181,6 +181,49 @@ Bead 34 deployment result:
 - Live `GET /api/checkout?plan=team` returns a human-readable email-required page instead of creating an unattributed Stripe session.
 - Live `POST /api/events` rejects `pilot_request` without a valid email and accepts a synthetic `codex-smoke+bead34@example.com` pilot request with Klaviyo configured.
 - Protected `/api/admin/leads` returned `401` from this shell because the local deploy env did not contain `BASELINE_ADMIN_TOKEN`; unauthenticated rejection was verified, but live lead readback remains to be confirmed with the operator/admin token.
+
+## 2026-06-10 Website Clarity + Commercial Viability Integration Deploy
+
+The standalone website-clarity branch was based before Bead 33/34 commercial work, so it was not deployed directly. The integration branch starts from deployed commit `8cdbae6` and ports the website clarity commit `9b0e90e944520346c494585169f8131d32b3e111` onto the current lead-magnet, pilot, checkout, admin, and account-private run surface.
+
+Deployment result:
+
+- Worker version `214cec6e-a79d-4360-8aa3-a19e2eb42939` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
+- Source branch: `codex/feat/bead-34-website-production-integration`.
+- Source commit before deploy receipt: `bab5eed`.
+
+Validation:
+
+```sh
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/ | rg -n "Know when your coding agent quietly changed|First local baseline|pilot-request"
+curl -fsS https://trackbaseline.com/docs/mcp | rg -n "Setup -&gt; run -&gt; accept -&gt; compare|First Good Baseline"
+curl -fsS https://trackbaseline.com/blog | rg -n "Field notes for agent operators|Lead resources"
+curl -fsS https://trackbaseline.com/dashboard | rg -n "Example data|Install-to-value path"
+curl -fsS https://trackbaseline.com/checkout/success | rg -n "send magic link|baseline sync on"
+curl -fsS https://trackbaseline.com/admin | rg -n "Invite pilot|view-leads"
+curl -fsS https://trackbaseline.com/robots.txt | rg -n "Disallow: /admin|Disallow: /api/"
+curl -fsS https://trackbaseline.com/sitemap.xml | rg -n "/guides/coding-agent-health-check|/resources/agent-drift-scorecard"
+curl -i -sS https://trackbaseline.com/mcp \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Results:
+
+- `make verify`, `git diff --check`, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- Live `/api/health` returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live homepage plainly explains Baseline as a local CLI/MCP checker and shows the setup -> run -> accept -> compare loop.
+- Live docs include copyable command blocks; live blog contains field-note sections plus the guide/resource index.
+- Live dashboard labels example data, and live admin/checkout success preserve the pilot invite and paid onboarding paths.
+- Live `/mcp` unauthenticated smoke returned `401` with `authentication_required`.
+
+Rollback:
+
+- Preferred rollback target: previous commercial-viability Worker version `7940fc3a-f89e-4972-9352-e77424b541a6`.
 
 Bead 25 deployment result:
 
