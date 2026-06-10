@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-34-fable-copy-polish`.
+- Working branch: `codex/deploy/bead-36-cf-production-redeploy`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -20,11 +20,12 @@
   - Bead 34 Fable copy polish: `subreview` was rerun on latest squashed `main` with Claude Fable 5 only and confirmed via manifest. Applied traced user-facing copy fixes: concrete checkout-success onboarding, visitor-facing resource labels, corrected dashboard command order, plan-neutral checkout copy, clearer pilot/pricing/privacy copy, and Worker deploy `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
   - Bead 34 current-main redeploy: PR #7 and PR #8 were already merged, so current `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` was deployed from a clean release worktree as Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
   - Bead 35 Cloudflare CLI correction: future Cloudflare operations use `cf`, not direct `wrangler` or `npm run deploy`. `web/wrangler.jsonc` remains the Worker config filename/schema only.
+  - Bead 36 `cf` production redeploy: PR #10 merged to `main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`. Production deployment `56391404-4f21-4b3f-b2fb-04a74aa29696` now has `source: api` and routes 100% traffic to Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
 - Canonical production URL is now `https://trackbaseline.com`.
-- Current production branch preserves Bead 33 content/lead routes, Bead 34 commercial checkout/pilot/admin routes, the Bead 34 website clarity copy pass, and the Claude Fable 5 anti-slop copy polish in a single production-ready Worker. Latest live Worker version is `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
+- Current production branch preserves Bead 33 content/lead routes, Bead 34 commercial checkout/pilot/admin routes, the Bead 34 website clarity copy pass, Claude Fable 5 anti-slop copy polish, and the Bead 35 `cf` deploy-tooling correction in a single production-ready Worker. Latest live Worker version is `d313f92f-bb02-47b0-81ec-8d571dc61ed7`; active deployment is `56391404-4f21-4b3f-b2fb-04a74aa29696` with `source: api`.
 - Cloudflare CLI rule: source the operator env without printing secrets, then use `cf auth whoami`, `cf agent-context workers`, `cf workers deployments list --script-name baseline-ai`, and command-specific `--dry-run` before any create/update/delete. Do not run body-less Worker mutation commands as deploys.
 - Public install command is now `curl -fsSL https://trackbaseline.com/install.sh | sh`, backed by GitHub Release assets and checksum verification.
 - Production Pro secrets are active: Stripe Checkout, Stripe webhook verification, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. Do not print secret values.
@@ -56,8 +57,8 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 34 Fable copy polish is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-34-website-production-integration` on `codex/feat/bead-34-fable-copy-polish`.
-- Current Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1` is live on `https://trackbaseline.com`; rollback target is previous website integration version `214cec6e-a79d-4360-8aa3-a19e2eb42939`.
+- Bead 36 production state is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-prod-cf-deploy` on `origin/main` commit `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`.
+- Current Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` is live on `https://trackbaseline.com`; active deployment is `56391404-4f21-4b3f-b2fb-04a74aa29696`; rollback target is previous Fable copy polish Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
 - Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
 
 ## Commands To Re-run
@@ -112,6 +113,7 @@
 - Bead 34 Fable copy polish: `subreview --reviewers claude --base HEAD^ HEAD` completed with Claude Fable 5 only; manifest at `/tmp/baseline-subreview-fable-copy-20260610T0315Z/manifest.json` records `model: claude-fable-5`, 1 completed reviewer, and 0 failed reviewers. Applied the actionable copy findings, then passed `npm --prefix web run typecheck`, `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, local route smokes on `http://localhost:8789`, production deploy, live `/api/health`, live homepage/blog/resource/checkout/dashboard/privacy smokes, and live negative copy sweep. Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1` is live.
 - Bead 34 current-main redeploy: PR #7 (`7aa0a8b`) and PR #8 (`cda91d1`) were already merged when the deploy request arrived. The stale standalone branch `codex/feat/bead-34-website-clarity` was not merged because it would have overwritten newer commercial/Fable work. A clean release worktree at `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead34-main` deployed `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` as Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`. Validation passed: `make verify-all`, `git diff --check`, `npm --prefix web audit --audit-level=high`, historical pre-correction Wrangler dry run, production deploy, live homepage/blog/docs/robots/sitemap host smokes, `www` and workers.dev health, and unauthenticated `/mcp` 401 with bearer challenge plus `authentication_required`.
 - Bead 35 Cloudflare CLI correction: local `cf` is `/Users/kikimac/.hermes/node/bin/cf`. `cf auth whoami`, `cf agent-context workers`, and `cf workers deployments list --script-name baseline-ai` passed with sourced operator env and confirmed deployment `36ecaeb4-2ef8-48dc-8f01-678378ca7c08` serves Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` at 100% traffic. `web/package.json` now uses `cf dev`, and `npm run deploy` intentionally exits with guidance to the documented `cf` workflow.
+- Bead 36 `cf` production redeploy: PR #10 was merged to `main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`; diff review showed no changes to `web/src`, `web/public`, or `web/wrangler.jsonc` since the active app version, so `cf workers deployments create` routed 100% traffic to existing Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`. Active deployment readback: `56391404-4f21-4b3f-b2fb-04a74aa29696`, `source: api`, created `2026-06-10T08:29:54.585318Z`. Validation passed: `make verify-all`, `git diff --check`, `npm --prefix web audit --audit-level=high`, `npm --prefix web run deploy` guard, `cf` dry-run/create/readback, apex/`www`/workers.dev health, homepage/docs markers, unauthenticated `POST /mcp` 401 with bearer challenge, and unauthenticated `/api/admin/leads` 401.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.
