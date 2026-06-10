@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "cf dev",
+    "deploy": "node -e \"console.error('Use the cf Worker deployment workflow in docs/DEPLOYMENT.md; do not deploy with npm run deploy.'); process.exit(1)\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

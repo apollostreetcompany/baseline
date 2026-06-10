@@ -10,6 +10,36 @@
 - Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead34-main`
 - Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, and the Claude Fable 5 anti-slop copy polish.
 
+## Cloudflare CLI Policy
+
+Current rule: use `cf` for Cloudflare operations. Do not run new production deploys through `wrangler` or `npm run deploy`.
+
+Required operator checks before Cloudflare create/update/delete operations:
+
+```sh
+set -a
+source /Users/kikimac/.hermes/.env
+set +a
+cf auth whoami
+cf agent-context workers
+cf workers deployments list --script-name baseline-ai
+```
+
+For Worker version/deployment changes, use the `cf workers versions` and `cf workers deployments` commands with an explicit reviewed request body and `--dry-run` first. Do not run body-less `cf workers scripts update` or body-less `cf workers versions create`; the dry-run only validates the API endpoint and is not a Worker bundle deploy.
+
+`web/wrangler.jsonc` remains the project configuration file name/schema used by the Worker toolchain. Mentions of Wrangler in older sections below are historical receipts from the commands actually run at that time, not the current deploy procedure.
+
+## 2026-06-10 `cf` CLI Correction
+
+Operator correction: future Cloudflare deploy and readback work uses `cf`, not `wrangler`. A follow-up readback with `cf workers deployments list --script-name baseline-ai` confirmed the active deployment is still Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` at 100% traffic.
+
+Current active deployment readback:
+
+- Deployment ID: `36ecaeb4-2ef8-48dc-8f01-678378ca7c08`
+- Worker version: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
+- Traffic: 100%
+- Created: `2026-06-10T07:43:13.078511Z`
+
 ## 2026-06-10 Current Main Production Redeploy
 
 After PR #7 and PR #8 were already merged to `main`, the exact `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` was redeployed from a clean release worktree so production reflects the merged website clarity and Claude Fable 5 copy polish.
@@ -19,6 +49,7 @@ Deployment result:
 - Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` deployed to `https://trackbaseline.com`, `https://www.trackbaseline.com`, and the workers.dev fallback.
 - Source branch: `origin/main`.
 - Source commit: `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b`.
+- Historical note: this Worker version was uploaded before the `cf` CLI correction. Future Cloudflare changes use the `cf` policy above.
 
 Validation:
 
@@ -26,8 +57,8 @@ Validation:
 make verify-all
 git diff --check
 npm --prefix web audit --audit-level=high
-cd web && npx wrangler deploy --dry-run
-cd web && npm run deploy
+cf auth whoami
+cf workers deployments list --script-name baseline-ai
 curl -fsS https://trackbaseline.com/api/health
 curl -fsS https://trackbaseline.com/ | rg -n "Know when your coding agent quietly changed|copy install command|Sample data"
 curl -fsS https://trackbaseline.com/blog | rg -n "Field notes for agent operators|How to accept a Good Baseline|MCP drift"
@@ -41,7 +72,7 @@ curl -i -sS https://trackbaseline.com/mcp -H 'content-type: application/json' --
 
 Results:
 
-- `make verify-all`, `git diff --check`, Wrangler dry run, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
+- `make verify-all`, `git diff --check`, `cf` deployment readback, and the high-severity audit gate passed. The audit still reports the known moderate Wrangler/Miniflare `ws` chain.
 - Live health returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
 - Live homepage, blog, MCP docs, robots, sitemap, `www`, and workers.dev fallback smokes passed.
 - Live unauthenticated `/mcp` returned HTTP `401` with `WWW-Authenticate` and `authentication_required`.
@@ -201,7 +232,11 @@ Preflight before deploy:
 
 ```sh
 make verify-all
-cd web && npm run deploy
+git diff --check
+cf auth whoami
+cf agent-context workers
+cf workers versions create --script-name baseline-ai --bindings-inherit strict --dry-run --body 'REVIEWED_VERSION_UPLOAD_BODY'
+cf workers deployments create --script-name baseline-ai --dry-run --body 'REVIEWED_DEPLOYMENT_BODY'
 curl -fsS https://trackbaseline.com/api/health
 curl -fsS -X POST https://trackbaseline.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
@@ -214,7 +249,7 @@ Expected unauthenticated MCP smoke result:
 
 Rollback:
 
-- Cloudflare Workers rollback to the previous deployment version from Wrangler or the Cloudflare dashboard.
+- Cloudflare Workers rollback through `cf workers deployments create --script-name baseline-ai --dry-run --body 'REVIEWED_ROLLBACK_BODY'`, then repeat without `--dry-run` after verifying the body.
 - If a schema bug is found, leave additive tables in place and rollback Worker code. Do not drop account/billing tables without explicit data-retention approval.
 
 ## 2026-06-10 Commercial Viability Gate
@@ -408,13 +443,13 @@ Results:
 
 Rollback:
 
-- Preferred code rollback: `cd web && npx wrangler rollback 4f1b94a0-543a-4cb2-8207-62825fb29594`
+- Preferred code rollback: use `cf workers deployments create --script-name baseline-ai --dry-run --body 'REVIEWED_ROLLBACK_BODY'` to route 100% traffic to Worker version `4f1b94a0-543a-4cb2-8207-62825fb29594`, then repeat without `--dry-run` after review.
 - If the domain attachment itself is wrong, remove the `routes` entries from `web/wrangler.jsonc`, redeploy, and verify the fallback workers.dev route.
 
 ## 2026-05-19 Brand Landing Assets
 
 - Worker static assets are now configured through `web/wrangler.jsonc` with `assets.directory = "./public"`.
-- Current image assets live under `web/public/assets/` and are uploaded by Wrangler with the Worker.
+- Current image assets live under `web/public/assets/` and are uploaded with the Worker deployment.
 - Deployed Worker version: `5cc879a3-983d-4e59-a620-e8abd8d70a99`
 - Deployed URL: https://trackbaseline.com
 - Implementation commit deployed: `257c17f`
@@ -442,7 +477,7 @@ Checkout behavior:
 - `POST /api/checkout` accepts `{ email, plan, successUrl, cancelUrl }` and returns `{ ok, url }` for the landing-page email form.
 - Klaviyo checkout-start events are best-effort through `ctx.waitUntil`; they must not grant entitlement or block checkout.
 
-Live deployment verification on 2026-05-19:
+Historical live deployment verification on 2026-05-19:
 
 ```sh
 cd web
@@ -502,7 +537,7 @@ Rollback:
 
 ## 2026-05-19 Production Pro Secret Activation
 
-Secrets are configured through Wrangler and must never be printed in logs. On 2026-05-19 the production Worker was configured with:
+Secrets are configured through the Cloudflare API/CLI and must never be printed in logs. Use `cf` going forward; this 2026-05-19 setup was completed before the `cf` correction.
 
 - Stripe Checkout secret key from Hermes `.env`.
 - Pro monthly price: `price_1TYkoGG0PuTic3wedLLYoZYS` at `$39/mo`.
@@ -744,7 +779,7 @@ curl -fsS http://localhost:8787/sitemap.xml | rg -n "/guides/|/resources/"
 curl -fsS -X POST http://localhost:8787/api/events -H 'content-type: application/json' --data '{"type":"lead_magnet_request","path":"/resources/agent-drift-scorecard","resource":"/resources/agent-drift-scorecard","email":"test@example.com","context":"codex mcp drift"}'
 ```
 
-Deploy:
+Historical deploy command used at the time:
 
 ```sh
 cd web
@@ -780,4 +815,4 @@ Results:
 
 Rollback:
 
-- Preferred rollback: `cd web && wrangler rollback b4f73e11-7540-4e97-8112-7698467b0484` to return to the immediately previous pre-Bead-33 Worker version listed by `wrangler deployments list --name baseline-ai`.
+- Preferred rollback: use `cf workers deployments create --script-name baseline-ai --dry-run --body 'REVIEWED_ROLLBACK_BODY'` to return 100% traffic to Worker version `b4f73e11-7540-4e97-8112-7698467b0484`, then repeat without `--dry-run` after review.
