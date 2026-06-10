@@ -5,7 +5,8 @@
 - Do not print payment, API, JWT, database, or private key secrets.
 - Do not export raw agent prompts or outputs to cloud paths unless explicitly enabled.
 - Do not let `baseline doctor` execute an agent; it remains read-only preflight.
-- Do not treat static assets as available in Cloudflare Workers unless Wrangler asset configuration or another asset route is present.
+- Do not treat static assets as available in Cloudflare Workers unless Worker asset configuration or another asset route is present.
+- Do not use `wrangler` or `npm run deploy` for new Cloudflare operations. Use `cf` with `cf auth whoami`, `cf agent-context workers`, command-specific `--dry-run`, and an explicit reviewed request body for Worker version/deployment mutations.
 
 ## Session Lessons
 - 2026-05-19: RepoPrompt workspace binding may be absent even when the repo exists locally. Bind or create the RepoPrompt workspace before code mapping.
@@ -15,3 +16,4 @@
 - 2026-05-19: Adding custom-domain routes can disable the workers.dev route unless `workers_dev` is set explicitly. Keep `workers_dev: true` when a fallback Worker URL is still useful.
 - 2026-05-19: Do not use broad `rg`/`cat` over `.env` files. Even if the chat does not display tool output, command output can expose live payment or lifecycle keys in logs. Use presence-only commands such as `awk -F= '{print $1"=set"}'` or pass values directly to secret managers without printing.
 - 2026-05-19: When passing one-off tokens to an interactive CLI, plain `read` in a TTY echoes stdin. Use `stty -echo; read ...; stty echo` or a non-echoing secret manager path for DataFast and similar tools.
+- 2026-06-10: Oops: Baseline now uses the Cloudflare `cf` CLI instead of direct `wrangler` commands for new deploy/readback operations. Keep historical Wrangler receipts as history, but update active commands to `cf`; never treat a body-less `cf workers scripts update` or `cf workers versions create` dry-run as a real Worker bundle deploy.

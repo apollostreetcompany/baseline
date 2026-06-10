@@ -1,4 +1,4 @@
-.PHONY: build test web-typecheck web-dev mac-build package-test plugin-validate release-build analytics-report verify verify-all
+.PHONY: build test web-typecheck web-dev cf-deploy-readback mac-build package-test plugin-validate release-build analytics-report verify verify-all
 
 build:
 	go build -o bin/baseline ./cmd/baseline
@@ -11,6 +11,10 @@ web-typecheck:
 
 web-dev:
 	cd web && npm run dev
+
+cf-deploy-readback:
+	cf auth whoami
+	cf workers deployments list --script-name baseline-ai
 
 mac-build:
 	cd macos/BaselineHotspots && swift build -Xswiftc -strict-concurrency=complete
