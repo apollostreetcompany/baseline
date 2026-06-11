@@ -69,7 +69,7 @@ Baseline Pro is Cloudflare Worker + Neon first. The Worker stores users, account
 
 First-customer path:
 
-1. A buyer starts Pro or Team checkout from the email-first pricing form, or requests a 7-day pilot from `/#pilot-request`.
+1. A buyer starts Pro or Team checkout from `/checkout` or the email-first pricing forms, optionally using `FounderBaseline` for a 100% founder/test checkout, or requests a 7-day pilot from `/#pilot-request`.
 2. Admin converts qualified leads from `/admin` with **Invite pilot**, optionally granting pilot entitlement immediately.
 3. Checkout success or admin invite sends the buyer through magic-link auth.
 4. Buyer creates a workspace token, then runs `baseline sync on --url https://trackbaseline.com --token <token>` and `baseline sync push`.
@@ -88,7 +88,7 @@ Primary account routes:
 - `POST /api/stripe/webhook`: raw Stripe signature verification and idempotent entitlement updates.
 - `POST /mcp`: Streamable-HTTP-style JSON-RPC remote MCP adapter over account, workspace, history, hotspot, compare, subscription, and owner support tools.
 
-Billing management uses Stripe Checkout and the Stripe Billing Portal. Baseline does not cancel subscriptions directly through MCP.
+Billing management uses Stripe Checkout and the Stripe Billing Portal. Baseline does not cancel subscriptions, issue refunds, or mutate payment methods directly through MCP. Stripe verified webhooks remain the source of truth for entitlement, including founder-code sessions.
 
 ## macOS Hotspot App
 
@@ -214,7 +214,7 @@ Baseline defaults to local SQLite. Cloud sync sends a small redacted payload: ru
 
 Cloud sync is staged through a local SQLite outbox. Failed uploads remain retryable and visible through `baseline sync status`; `baseline sync push` stages unsynced local runs and retries queued uploads.
 
-The deployed ingest API accepts either the temporary global dogfood token or a Pro workspace token. Pro tokens are stored in Neon as prefix plus HMAC hash only. Stripe checkout and webhooks are implemented but not live until Stripe credentials, price IDs, webhook secret, magic-link secret, token HMAC secret, and Klaviyo credentials are set as Worker secrets.
+The deployed ingest API accepts either the temporary global dogfood token or a Pro workspace token. Pro tokens are stored in Neon as prefix plus HMAC hash only. Stripe checkout, webhooks, magic-link auth, workspace tokens, Klaviyo lifecycle events, and the `FounderBaseline` promotion-code binding are configured in production.
 
 ## Deployed Infrastructure
 
@@ -239,11 +239,11 @@ See `docs/PUBLISHING.md` for release and verification steps.
 
 ## Production Pro Status
 
-Production Worker secrets are configured for Stripe Checkout, Stripe webhooks, Klaviyo lifecycle email, magic-link auth, and HMAC workspace tokens. The remaining paid-pilot check is an end-to-end live checkout/magic-link/workspace-token/sync smoke with a real invited account.
+Production Worker secrets are configured for Stripe Checkout, Stripe webhooks, Klaviyo lifecycle email, master notifications, magic-link auth, HMAC workspace tokens, and the `FounderBaseline` promotion-code id. The remaining paid-pilot check is an end-to-end completed live checkout/magic-link/workspace-token/sync smoke with a real invited account.
 
 ## Launch Analytics
 
-The public Worker loads DataFast for `trackbaseline.com` and tracks launch funnel goals for section scroll, install intent, docs clicks, checkout start, and Stripe return states. Use the CLI report helper with a local `DATAFAST_TOKEN`; never commit the token.
+The public Worker loads DataFast for `trackbaseline.com` and tracks launch funnel goals for section scroll, install intent, docs clicks, checkout starts, founder coupon application, Stripe redirects, and Stripe return states. Use the CLI report helper with a local `DATAFAST_TOKEN`; never commit the token.
 
 ```sh
 DATAFAST_TOKEN="dft_..." make analytics-report

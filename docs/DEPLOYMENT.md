@@ -5,11 +5,11 @@
 - Worker: `baseline-ai`
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
-- Current Version ID: `d313f92f-bb02-47b0-81ec-8d571dc61ed7`
-- Current Deployment ID: `56391404-4f21-4b3f-b2fb-04a74aa29696`
-- Current production source branch: `origin/main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`
-- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-prod-cf-deploy`
-- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, and Bead 35 `cf` deploy-tooling correction.
+- Current Version ID: `0ddb077d-5188-4256-98eb-baf449a30d4c`
+- Current Deployment ID: `914c9007-c221-4ebd-bb6a-7b8ed1b452b7`
+- Current production source branch: `codex/feat/bead-37-checkout-router` implementation commit `48057c27d64edba262dbfa46d747ef7334183793`
+- Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-35-checkout-router`
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, Bead 35 `cf` deploy-tooling correction, and the Bead 37 checkout router with founder-code Stripe Checkout, Klaviyo/Datafa.st routing, and failed-webhook retry handling.
 
 ## Cloudflare CLI Policy
 
@@ -29,6 +29,92 @@ cf workers deployments list --script-name baseline-ai
 For Worker version/deployment changes, use the `cf workers versions` and `cf workers deployments` commands with an explicit reviewed request body and `--dry-run` first. Do not run body-less `cf workers scripts update` or body-less `cf workers versions create`; the dry-run only validates the API endpoint and is not a Worker bundle deploy.
 
 `web/wrangler.jsonc` remains the project configuration file name/schema used by the Worker toolchain. Mentions of Wrangler in older sections below are historical receipts from the commands actually run at that time, not the current deploy procedure.
+
+For changed Worker code, the Cloudflare REST upload path requires a `multipart/form-data` Worker upload with `metadata.main_module`, compatibility date, bindings, and code parts. Current `cf workers versions create --body ...` dry-runs serialize the body as JSON and cannot express the multipart upload by themselves. If no first-class `cf` multipart wrapper is available, use a reviewed Cloudflare API version upload with a bundled module, `keep_assets: true`, inherited secret bindings, and then use `cf workers deployments create` for the traffic switch/readback. Do not use `wrangler deploy` as the production mutation path.
+
+## 2026-06-11 Checkout Router Production Deploy
+
+Bead 37 adds a commercially usable checkout router while preserving the email-first, webhook-authoritative billing model.
+
+Implementation result:
+
+- Added `/checkout` as the dedicated rules page and linked it from nav, footer, pricing cards, and email-required checkout fallbacks.
+- Added founder coupon input handling to pricing/checkout forms without printing the live code publicly.
+- `POST /api/checkout` accepts only the configured founder code, applies `STRIPE_FOUNDER_PROMOTION_CODE_ID`, uses `payment_method_collection=if_required`, and returns canonical coupon metadata only after server validation.
+- Stripe webhook completion tags founder-code entitlements as `stripe_founder`, includes coupon metadata in lifecycle/audit properties, and reprocesses failed event rows on Stripe retry.
+- Klaviyo receives redacted buyer lifecycle events and master webhook notifications with event type, object id, plan, coupon presence, account id when known, and email-presence booleans.
+- Datafa.st receives checkout start, coupon-applied, redirect, success-return, and cancel-return goals; the Worker carries the `datafast_visitor_id` cookie into Stripe metadata when present.
+- Local `cf dev` requires `@cloudflare/wrangler-bundler`; the dependency is declared so local Worker smokes work in fresh worktrees.
+
+Pre-deploy validation:
+
+```sh
+subreview --reviewers claude --output /tmp/baseline-subreview-checkout-implementation --intent "Commercial checkout implementation review..."
+npm --prefix web run typecheck
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS http://127.0.0.1:60702/checkout
+curl -sS -X POST http://127.0.0.1:60702/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@example.com","plan":"pro","couponCode":"WrongCode"}'
+curl -sS -X POST http://127.0.0.1:60702/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@example.com","plan":"pro","couponCode":"FounderBaseline"}'
+```
+
+Results so far:
+
+- Claude Fable 5 `subreview` completed with 1 reviewer and 0 failed reviewers at `/tmp/baseline-subreview-checkout-implementation/claude.md`; acted-on findings are recorded in the Bead 37 plan.
+- Typecheck, `make verify`, `git diff --check`, high-severity audit, local route smokes, and Playwright desktop/mobile layout checks passed.
+- Stripe promotion code readback verified the founder code is active, capped, 100% off, and `duration=forever`.
+- Worker secrets readback confirmed `STRIPE_FOUNDER_PROMOTION_CODE_ID`, `BASELINE_MASTER_EMAIL`, Stripe, and Klaviyo secret names are present without printing values.
+
+Deployment:
+
+```sh
+cf auth whoami
+cf workers secrets list --script-name baseline-ai
+cf workers deployments list --script-name baseline-ai
+esbuild web/src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=/tmp/baseline-bead37-worker.js
+curl -X POST https://api.cloudflare.com/client/v4/accounts/3a0bfe287d4dfb27f802ee5d7e4b21e1/workers/scripts/baseline-ai/versions?bindings_inherit=strict ...
+cf workers versions get 0ddb077d-5188-4256-98eb-baf449a30d4c --script-name baseline-ai
+cf workers deployments create --script-name baseline-ai --dry-run --body '{"strategy":"percentage","versions":[{"version_id":"0ddb077d-5188-4256-98eb-baf449a30d4c","percentage":100}]}'
+cf workers deployments create --script-name baseline-ai --body '{"strategy":"percentage","versions":[{"version_id":"0ddb077d-5188-4256-98eb-baf449a30d4c","percentage":100}]}'
+cf workers deployments get 914c9007-c221-4ebd-bb6a-7b8ed1b452b7 --script-name baseline-ai
+```
+
+Results:
+
+- Version upload first failed validation with Cloudflare `No such module: main.js`; retrying with explicit `filename=main.js` and `application/javascript+module` succeeded.
+- Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c` was uploaded with source `api`, `keep_assets: true`, compatibility date `2026-05-13`, and the expected inherited secrets.
+- Deployment `914c9007-c221-4ebd-bb6a-7b8ed1b452b7` routes 100% traffic to Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c`.
+- Rollback target is the previous secret-triggered production version `c4ec271a-5520-4cfe-afe7-15de1b905fb3` or the prior code version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
+
+Live validation:
+
+```sh
+curl -fsS https://trackbaseline.com/api/health
+curl -fsS https://trackbaseline.com/checkout
+curl -sS -X POST https://trackbaseline.com/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@trackbaseline.com","plan":"pro","couponCode":"FounderBaseline"}'
+curl -fsS https://api.stripe.com/v1/checkout/sessions/SESSION_ID -u "$STRIPE_SECRET_KEY:"
+curl -sS -i 'https://trackbaseline.com/api/checkout?plan=pro&coupon=WrongCode'
+curl -fsS 'https://trackbaseline.com/checkout/success?session_id=cs_test_fake&plan=pro&coupon=FounderBaseline'
+curl -fsS 'https://trackbaseline.com/checkout/cancel?plan=team&coupon=FounderBaseline'
+curl -sS -i -X POST https://trackbaseline.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+curl -sS -i https://trackbaseline.com/api/admin/leads
+curl -fsS https://www.trackbaseline.com/api/health
+curl -fsS https://baseline-ai.ryan-borker.workers.dev/api/health
+curl -fsS https://trackbaseline.com/robots.txt
+```
+
+Results:
+
+- Live health returned `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, and `stripe_webhook:true`.
+- Live `/checkout` contains the checkout rules, Pro/Team checkout starts, and founder-code placeholders. The live public page does not contain the literal founder code.
+- Live invalid-coupon GET returned HTTP `400` with the checkout-paused page and checkout-rules link.
+- Live success/cancel pages emit the expected Datafa.st return scripts and plan/coupon presence metadata.
+- Live founder-code checkout session creation returned `ok:true`, `coupon_present:true`, and Stripe host `checkout.stripe.com`.
+- Stripe session readback for the synthetic founder checkout showed `mode=subscription`, `payment_method_collection=if_required`, `amount_subtotal=3900`, `amount_total=0`, `total_details.amount_discount=3900`, `payment_status=unpaid`, and metadata including `plan=pro`, `coupon_code=FounderBaseline`, and `discount_kind=founder_100`.
+- Live unauthenticated `POST /mcp` returned HTTP `401` with `authentication_required`.
+- Live unauthenticated `/api/admin/leads` returned HTTP `401` with `invalid admin token`.
+- Apex, `www`, and workers.dev fallback health smokes passed; `robots.txt` disallows `/checkout` and `/checkout/`.
 
 ## 2026-06-10 `cf` CLI Correction
 

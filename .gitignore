@@ -2,6 +2,7 @@
 dist/
 web/node_modules/
 web/.wrangler/
+.rp-mini/
 *.log
 .DS_Store
 .build/
