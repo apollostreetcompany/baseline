@@ -7,7 +7,7 @@
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
 - Current Version ID: `0ddb077d-5188-4256-98eb-baf449a30d4c`
 - Current Deployment ID: `914c9007-c221-4ebd-bb6a-7b8ed1b452b7`
-- Current production source branch: `codex/feat/bead-37-checkout-router` implementation commit `48057c27d64edba262dbfa46d747ef7334183793`
+- Current production source branch: `origin/main` at merge commit `66e897b77ef96484650490cfd3196aff66bd20ad`; Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c` was originally uploaded from implementation commit `48057c27d64edba262dbfa46d747ef7334183793` before PR #12 was squash-merged.
 - Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-35-checkout-router`
 - Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, Bead 35 `cf` deploy-tooling correction, and the Bead 37 checkout router with founder-code Stripe Checkout, Klaviyo/Datafa.st routing, and failed-webhook retry handling.
 

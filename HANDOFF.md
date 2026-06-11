@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/feat/bead-37-checkout-router`.
+- Working branch: `codex/docs/bead-37-main-receipt`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -63,7 +63,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
-- Bead 37 implementation state is in `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-35-checkout-router` on `codex/feat/bead-37-checkout-router`; PR #12 is open. Production already serves implementation commit `48057c27d64edba262dbfa46d747ef7334183793` as Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c` through deployment `914c9007-c221-4ebd-bb6a-7b8ed1b452b7`; merge-to-main and receipt commit are pending.
+- Bead 37 implementation state is merged to `main` through PR #12 at merge commit `66e897b77ef96484650490cfd3196aff66bd20ad`. Production already serves Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c` through deployment `914c9007-c221-4ebd-bb6a-7b8ed1b452b7`; this branch only corrects post-merge receipt wording.
 - Bead 36 production state is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-prod-cf-deploy` on `origin/main` commit `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`.
 - Current Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` is live on `https://trackbaseline.com`; active deployment is `56391404-4f21-4b3f-b2fb-04a74aa29696`; rollback target is previous Fable copy polish Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
 - Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
