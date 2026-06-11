@@ -30,6 +30,44 @@ For Worker version/deployment changes, use the `cf workers versions` and `cf wor
 
 `web/wrangler.jsonc` remains the project configuration file name/schema used by the Worker toolchain. Mentions of Wrangler in older sections below are historical receipts from the commands actually run at that time, not the current deploy procedure.
 
+For changed Worker code, the Cloudflare REST upload path requires a `multipart/form-data` Worker upload with `metadata.main_module`, compatibility date, bindings, and code parts. Current `cf workers versions create --body ...` dry-runs serialize the body as JSON and cannot express the multipart upload by themselves. If no first-class `cf` multipart wrapper is available, use a reviewed Cloudflare API version upload with a bundled module, `keep_assets: true`, inherited secret bindings, and then use `cf workers deployments create` for the traffic switch/readback. Do not use `wrangler deploy` as the production mutation path.
+
+## 2026-06-11 Checkout Router Implementation
+
+Bead 37 adds a commercially usable checkout router while preserving the email-first, webhook-authoritative billing model.
+
+Implementation result:
+
+- Added `/checkout` as the dedicated rules page and linked it from nav, footer, pricing cards, and email-required checkout fallbacks.
+- Added founder coupon input handling to pricing/checkout forms without printing the live code publicly.
+- `POST /api/checkout` accepts only the configured founder code, applies `STRIPE_FOUNDER_PROMOTION_CODE_ID`, uses `payment_method_collection=if_required`, and returns canonical coupon metadata only after server validation.
+- Stripe webhook completion tags founder-code entitlements as `stripe_founder`, includes coupon metadata in lifecycle/audit properties, and reprocesses failed event rows on Stripe retry.
+- Klaviyo receives redacted buyer lifecycle events and master webhook notifications with event type, object id, plan, coupon presence, account id when known, and email-presence booleans.
+- Datafa.st receives checkout start, coupon-applied, redirect, success-return, and cancel-return goals; the Worker carries the `datafast_visitor_id` cookie into Stripe metadata when present.
+- Local `cf dev` requires `@cloudflare/wrangler-bundler`; the dependency is declared so local Worker smokes work in fresh worktrees.
+
+Pre-deploy validation:
+
+```sh
+subreview --reviewers claude --output /tmp/baseline-subreview-checkout-implementation --intent "Commercial checkout implementation review..."
+npm --prefix web run typecheck
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS http://127.0.0.1:60702/checkout
+curl -sS -X POST http://127.0.0.1:60702/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@example.com","plan":"pro","couponCode":"WrongCode"}'
+curl -sS -X POST http://127.0.0.1:60702/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@example.com","plan":"pro","couponCode":"FounderBaseline"}'
+```
+
+Results so far:
+
+- Claude Fable 5 `subreview` completed with 1 reviewer and 0 failed reviewers at `/tmp/baseline-subreview-checkout-implementation/claude.md`; acted-on findings are recorded in the Bead 37 plan.
+- Typecheck, `make verify`, `git diff --check`, high-severity audit, local route smokes, and Playwright desktop/mobile layout checks passed.
+- Stripe promotion code readback verified the founder code is active, capped, 100% off, and `duration=forever`.
+- Worker secrets readback confirmed `STRIPE_FOUNDER_PROMOTION_CODE_ID`, `BASELINE_MASTER_EMAIL`, Stripe, and Klaviyo secret names are present without printing values.
+
+Production deployment and live checkout-session smoke remain pending.
+
 ## 2026-06-10 `cf` CLI Correction
 
 Operator correction: future Cloudflare deploy and readback work uses `cf`, not `wrangler`. A follow-up readback with `cf workers deployments list --script-name baseline-ai` confirmed the active deployment is still Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` at 100% traffic.

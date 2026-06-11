@@ -9,6 +9,8 @@ export interface CloudEnv {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID_PRO?: string;
   STRIPE_PRICE_ID_TEAM?: string;
+  STRIPE_FOUNDER_PROMOTION_CODE_ID?: string;
+  BASELINE_FOUNDER_COUPON_CODE?: string;
   KLAVIYO_PRIVATE_API_KEY?: string;
   KLAVIYO_REVISION?: string;
   BASELINE_MASTER_EMAIL?: string;
@@ -701,6 +703,8 @@ async function checkoutSessionStatus(request: Request, env: CloudEnv): Promise<R
     ok: true,
     session_id: sessionID,
     payment_status: session.payment_status || null,
+    plan_hint: metadata.plan_key || metadata.plan || null,
+    coupon_present: Boolean(metadata.coupon_code),
     email_hint: email || null,
     entitlement_hint: rows[0] || null,
     next_actions: ["Stripe webhook is the source of truth. If status is pending, wait for webhook delivery or check Stripe events."]
@@ -724,7 +728,12 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
   const inserted = await sql`
     insert into stripe_events (id, stripe_event_id, event_type, livemode, payload_hash, status)
     values (${crypto.randomUUID()}, ${eventID}, ${eventType}, ${Boolean(event.livemode)}, ${payloadHash}, 'pending')
-    on conflict (stripe_event_id) do nothing
+    on conflict (stripe_event_id) do update set
+      payload_hash = excluded.payload_hash,
+      status = 'pending',
+      error = null,
+      processed_at = null
+    where stripe_events.status = 'failed'
     returning id
   `;
   if (!inserted.length) return json({ ok: true, duplicate: true });
@@ -732,8 +741,24 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
     await processStripeEvent(sql, event, env, ctx);
     await sql`update stripe_events set status = 'processed', processed_at = now() where stripe_event_id = ${eventID}`;
     const object = stripeObject(event);
+    const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
     const email = normalizeEmail(String(object.customer_email || object.email || "")) || "";
     if (email) ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Billing Updated", "", { stripe_event_type: eventType }));
+    const masterEmail = normalizeEmail(env.BASELINE_MASTER_EMAIL || "");
+    if (masterEmail) {
+      ctx?.waitUntil(sendKlaviyoAuthEvent(env, masterEmail, "Baseline Master Notification", "", {
+        event_type: "stripe_webhook_processed",
+        stripe_event_type: eventType,
+        stripe_event_id: eventID,
+        object_id: String(object.id || ""),
+        subscription_id: String(object.subscription || ""),
+        account_id: String(metadata.account_id || object.client_reference_id || ""),
+        plan: String(metadata.plan_key || metadata.plan || ""),
+        coupon_present: Boolean(metadata.coupon_code),
+        coupon_code: String(metadata.coupon_code || ""),
+        customer_email_present: Boolean(email)
+      }));
+    }
     return json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
@@ -1148,15 +1173,17 @@ async function processStripeEvent(sql: NeonQueryFunction<false, false>, event: R
       }
     }
     if (!accountID) return;
-    await grantEntitlement(sql, accountID, "active", "stripe", plan === "team" ? "team" : "pro", null);
-    await audit(sql, "stripe", String(event.id || ""), "checkout.completed", "account", accountID, String(object.id || ""), { plan });
-    await queueLifecycleEvent(sql, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", { plan, stripe_event_id: String(event.id || ""), stripe_event_type: type });
+    const couponCode = String(metadata.coupon_code || "");
+    const entitlementSource = couponCode ? "stripe_founder" : "stripe";
+    await grantEntitlement(sql, accountID, "active", entitlementSource, plan === "team" ? "team" : "pro", null);
+    await audit(sql, "stripe", String(event.id || ""), "checkout.completed", "account", accountID, String(object.id || ""), { plan, coupon_code: couponCode || undefined, entitlement_source: entitlementSource });
+    await queueLifecycleEvent(sql, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", { plan, coupon_code: couponCode || "", coupon_present: Boolean(couponCode), stripe_event_id: String(event.id || ""), stripe_event_type: type });
     if (email && env.MAGIC_LINK_SECRET) {
       const accountRows = await sql`select primary_user_id from accounts where id = ${accountID} limit 1`;
       const userID = accountRows.length ? String((accountRows[0] as Record<string, unknown>).primary_user_id) : "";
       if (userID) {
         const link = await createMagicLink(sql, env, userID, accountID, email, "checkout");
-        ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Subscription Started", link.url, { purpose: "checkout", account_id: accountID, plan }));
+        ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Subscription Started", link.url, { purpose: "checkout", account_id: accountID, plan, coupon_present: Boolean(couponCode), coupon_code: couponCode || "" }));
       }
     }
     return;

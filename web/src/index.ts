@@ -16,6 +16,8 @@ interface Env {
   STRIPE_PRICE_ID_TEAM?: string;
   STRIPE_PAYMENT_LINK_PRO?: string;
   STRIPE_PAYMENT_LINK_TEAM?: string;
+  STRIPE_FOUNDER_PROMOTION_CODE_ID?: string;
+  BASELINE_FOUNDER_COUPON_CODE?: string;
   KLAVIYO_PRIVATE_API_KEY?: string;
   KLAVIYO_REVISION?: string;
   BASELINE_MASTER_EMAIL?: string;
@@ -92,6 +94,14 @@ type ContentPage = {
   points: string[];
   checklist: string[];
   cta: string;
+};
+
+type CheckoutInput = {
+  email?: string;
+  plan?: string;
+  successUrl?: string;
+  cancelUrl?: string;
+  couponCode?: string;
 };
 
 const CONTENT_PAGES: ContentPage[] = [
@@ -293,6 +303,7 @@ export default {
       if (read && url.pathname === "/blog") return html(blogPage(env));
       const content = read ? contentPageForPath(url.pathname) : undefined;
       if (content) return html(contentPage(env, content));
+      if (read && url.pathname === "/checkout") return html(checkoutPage(env, url.searchParams.get("plan") === "team" ? "team" : "pro"));
       if (read && url.pathname === "/checkout/success") return html(checkoutSuccessPage(env));
       if (read && url.pathname === "/checkout/cancel") return html(checkoutCancelPage(env));
       if (read && url.pathname === "/privacy") return html(privacyPage(env));
@@ -779,9 +790,19 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   const plan = (input.plan || url.searchParams.get("plan")) === "team" ? "team" : "pro";
   const email = normalizeOptionalEmail(input.email);
   const origin = baseURL(env, request);
+  const datafastVisitorId = datafastVisitorID(request);
+  const couponInput = normalizeCouponCode(input.couponCode || url.searchParams.get("coupon"));
+  const founderCode = founderCouponCode(env);
+  const couponCode = couponInput ? founderCode : "";
   if (!email) {
     if (request.method === "GET") return html(checkoutNeedsEmailPage(env, plan), 400);
     return json({ ok: false, error: "valid email required before checkout so the account can be provisioned" }, 400);
+  }
+  if (couponInput && couponInput.toLowerCase() !== founderCode.toLowerCase()) {
+    return json({ ok: false, error: "That coupon code is not available for Baseline checkout." }, 400);
+  }
+  if (couponCode && !env.STRIPE_FOUNDER_PROMOTION_CODE_ID) {
+    return json({ ok: false, error: "Founder coupon checkout is not configured yet. Email help@trackbaseline.com and keep the local CLI running." }, 503);
   }
   const price = plan === "team" ? env.STRIPE_PRICE_ID_TEAM : env.STRIPE_PRICE_ID_PRO;
   const paymentLink = plan === "team" ? env.STRIPE_PAYMENT_LINK_TEAM : env.STRIPE_PAYMENT_LINK_PRO;
@@ -796,10 +817,11 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
     return json({ ok: false, error: "Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID_PRO/TEAM before paid checkout." }, 503);
   }
   if (!price) return json({ ok: false, error: "Stripe price id is not configured for " + plan }, 503);
+  const couponQuery = couponCode ? "&coupon=" + encodeURIComponent(couponCode) : "";
   const body = new URLSearchParams({
     mode: "subscription",
-    success_url: normalizeCheckoutReturn(input.successUrl, origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", origin),
-    cancel_url: normalizeCheckoutReturn(input.cancelUrl, origin + "/checkout/cancel", origin),
+    success_url: normalizeCheckoutReturn(input.successUrl, origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}&plan=" + plan + couponQuery, origin),
+    cancel_url: normalizeCheckoutReturn(input.cancelUrl, origin + "/checkout/cancel?plan=" + plan + couponQuery, origin),
     "line_items[0][price]": price,
     "line_items[0][quantity]": "1",
     "metadata[plan]": plan,
@@ -808,6 +830,18 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
     "subscription_data[metadata][plan]": plan,
     "subscription_data[metadata][product_name]": "Baseline Pro Monitoring"
   });
+  if (datafastVisitorId) {
+    body.set("metadata[datafast_visitor_id]", datafastVisitorId);
+    body.set("subscription_data[metadata][datafast_visitor_id]", datafastVisitorId);
+  }
+  if (couponCode && env.STRIPE_FOUNDER_PROMOTION_CODE_ID) {
+    body.set("discounts[0][promotion_code]", env.STRIPE_FOUNDER_PROMOTION_CODE_ID);
+    body.set("payment_method_collection", "if_required");
+    body.set("metadata[coupon_code]", couponCode);
+    body.set("metadata[discount_kind]", "founder_100");
+    body.set("subscription_data[metadata][coupon_code]", couponCode);
+    body.set("subscription_data[metadata][discount_kind]", "founder_100");
+  }
   let checkoutAccount = null;
   if (email) {
     if (!env.DATABASE_URL) return json({ ok: false, error: "DATABASE_URL is required for account checkout" }, 503);
@@ -825,19 +859,20 @@ async function checkout(request: Request, env: Env, ctx?: ExecutionContext): Pro
   });
   const session = await resp.json<{ url?: string; error?: { message?: string } }>();
   if (!resp.ok || !session.url) return json({ ok: false, error: session.error?.message || "Stripe checkout failed" }, 502);
-  ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, false));
-  if (request.method === "POST") return json({ ok: true, url: session.url });
+  ctx?.waitUntil(emitCheckoutStartedEvents(env, email, plan, false, couponCode));
+  if (request.method === "POST") return json({ ok: true, url: session.url, plan, coupon_present: Boolean(couponCode), coupon_code: couponCode });
   return Response.redirect(session.url, 303);
 }
 
-async function safeCheckoutInput(request: Request): Promise<{ email?: string; plan?: string; successUrl?: string; cancelUrl?: string }> {
+async function safeCheckoutInput(request: Request): Promise<CheckoutInput> {
   try {
     const body = await request.json<Record<string, unknown>>();
     return {
       email: typeof body.email === "string" ? body.email : undefined,
       plan: typeof body.plan === "string" ? body.plan : undefined,
       successUrl: typeof body.successUrl === "string" ? body.successUrl : undefined,
-      cancelUrl: typeof body.cancelUrl === "string" ? body.cancelUrl : undefined
+      cancelUrl: typeof body.cancelUrl === "string" ? body.cancelUrl : undefined,
+      couponCode: typeof body.couponCode === "string" ? body.couponCode : undefined
     };
   } catch {
     return {};
@@ -852,6 +887,27 @@ function normalizeOptionalEmail(value: unknown): string | undefined {
   return trimmed;
 }
 
+function normalizeCouponCode(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, 64);
+}
+
+function datafastVisitorID(request: Request): string {
+  const cookie = request.headers.get("cookie") || "";
+  const match = cookie.match(/(?:^|;\s*)datafast_visitor_id=([^;]+)/);
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]).trim().slice(0, 120);
+  } catch {
+    return "";
+  }
+}
+
+function founderCouponCode(env: Env): string {
+  const configured = normalizeCouponCode(env.BASELINE_FOUNDER_COUPON_CODE);
+  return configured || "FounderBaseline";
+}
+
 function normalizeCheckoutReturn(value: string | undefined, fallback: string, origin: string): string {
   if (!value) return fallback;
   try {
@@ -862,20 +918,23 @@ function normalizeCheckoutReturn(value: string | undefined, fallback: string, or
   }
 }
 
-function checkoutEventProperties(env: Env, plan: string, paymentLink: boolean): Record<string, unknown> {
+function checkoutEventProperties(env: Env, plan: string, paymentLink: boolean, couponCode = ""): Record<string, unknown> {
   return {
     product_name: "Baseline Pro Monitoring",
     plan,
     payment_link: paymentLink,
+    coupon_present: Boolean(couponCode),
+    coupon_code: couponCode || "",
+    discount_kind: couponCode ? "founder_100" : "",
     site_id: "baseline-ai",
     app_url: baseURL(env)
   };
 }
 
-async function emitCheckoutStartedEvents(env: Env, email: string | undefined, plan: string, paymentLink: boolean): Promise<void> {
+async function emitCheckoutStartedEvents(env: Env, email: string | undefined, plan: string, paymentLink: boolean, couponCode = ""): Promise<void> {
   const uniqueId = crypto.randomUUID();
   const time = new Date().toISOString();
-  const properties = checkoutEventProperties(env, plan, paymentLink);
+  const properties = checkoutEventProperties(env, plan, paymentLink, couponCode);
   await Promise.all([
     emitKlaviyoEvent(env, {
       email,
@@ -1130,8 +1189,8 @@ baseline compare`, "First local baseline")}
         </div>
         <div class="priceTable">
           ${priceColumn("Local", "$0", "", "First workstation", ["CLI and MCP runner.", "Local SQLite history and report artifacts.", "Good Baseline review, accept, and compare."], "install", "/docs/mcp", false)}
-          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 private workspaces.", "Redacted run history and magic-link account access.", "30-day retained history and workspace-token sync."], "buy pro", "/api/checkout?plan=pro", true)}
-          ${priceColumn("Team", "$129", "/mo", "When reviews need to route", ["Up to 10 shared workspaces.", "Owner-managed invites and workspace tokens.", "Team-visible history for handoffs and weekly review."], "buy team", "/api/checkout?plan=team", true)}
+          ${priceColumn("Pro", "$39", "/mo", "When history matters", ["Up to 3 private workspaces.", "Redacted run history and magic-link account access.", "30-day retained history and workspace-token sync."], "buy pro", "/checkout?plan=pro", true)}
+          ${priceColumn("Team", "$129", "/mo", "When reviews need to route", ["Up to 10 shared workspaces.", "Owner-managed invites and workspace tokens.", "Team-visible history for handoffs and weekly review."], "buy team", "/checkout?plan=team", true)}
         </div>
         ${pilotRequestPanel()}
       </section>
@@ -1277,6 +1336,7 @@ function stepBlocks(): string {
 function priceColumn(name: string, price: string, sub: string, tag: string, features: string[], cta: string, href: string, form: boolean): string {
   const plan = name.toLowerCase();
   const emailId = `checkout-email-${plan}`;
+  const couponId = `checkout-coupon-${plan}`;
   const goalAttrs = plan === "local"
     ? `data-fast-goal="install_click" data-fast-goal-plan="local" data-fast-goal-location="pricing"`
     : `data-fast-goal="checkout_start" data-fast-goal-plan="${plan}" data-fast-goal-price="${price.replace("$", "")}" data-fast-goal-currency="usd" data-fast-goal-location="pricing"`;
@@ -1289,7 +1349,10 @@ function priceColumn(name: string, price: string, sub: string, tag: string, feat
       <form class="checkoutForm" data-checkout-form data-plan="${plan}" data-price="${price.replace("$", "")}">
         <label class="srOnly" for="${emailId}">Email for ${name} checkout</label>
         <input id="${emailId}" name="email" type="email" autocomplete="email" placeholder="work email" required>
+        <label class="srOnly" for="${couponId}">Coupon code for ${name} checkout</label>
+        <input id="${couponId}" name="couponCode" type="text" autocomplete="off" placeholder="coupon code (optional)">
         <button class="btn btnPrimary" type="submit" ${goalAttrs}>${cta} &rarr;</button>
+        <p class="checkoutRuleLink"><a href="${href}">checkout rules and coupon path</a></p>
         <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
       </form>
     ` : `<a class="btn btnGhost" href="${href}" ${goalAttrs}>${cta} &rarr;</a>`}
@@ -1484,6 +1547,73 @@ function contentJsonLD(env: Env, page: ContentPage): string {
   return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
 }
 
+function checkoutPage(env: Env, selectedPlan: "pro" | "team"): string {
+  return layout(env, {
+    title: "Baseline.ai checkout",
+    description: "Start Baseline Pro or Team checkout with email-first Stripe account provisioning, founder coupon support, and magic-link workspace-token onboarding.",
+    path: "/checkout",
+    noindex: true,
+    structuredData: softwareJsonLD(env)
+  }, `
+    <main class="doc checkoutPage" data-default-plan="${selectedPlan}">
+      <p class="eyebrow">Checkout rules</p>
+      <h1>Checkout still creates the same real Baseline account path.</h1>
+      <p class="ledeText">Use this page for Pro, Team, or founder-code tests. The local CLI and MCP runner stay free; paid plans add retained redacted history, account workspaces, and remote MCP account tools.</p>
+      <section class="checkoutRules">
+        <div>
+          <span>01</span>
+          <h2>Email first</h2>
+          <p>Baseline creates or finds the account before sending you to Stripe, so the webhook can attach the subscription to the right workspace-token path.</p>
+        </div>
+        <div>
+          <span>02</span>
+          <h2>Stripe is source of truth</h2>
+          <p>The success page does not grant access by itself. Verified Stripe webhooks activate entitlement, then the magic link opens the account session.</p>
+        </div>
+        <div>
+          <span>03</span>
+          <h2>Founder code is a real checkout</h2>
+          <p>The founder coupon removes the Stripe cost for testing, but it still goes through Checkout, webhook processing, magic link, workspace token, and <code>baseline sync push</code>.</p>
+        </div>
+        <div>
+          <span>04</span>
+          <h2>Billing handoff stays in Stripe</h2>
+          <p>MCP can show billing status or hand you to the Stripe portal. It does not cancel, refund, or mutate payment methods directly.</p>
+        </div>
+      </section>
+      <section class="checkoutPlans" aria-label="Baseline checkout plans">
+        ${checkoutPlanForm("pro", "$39", "3 private workspaces", selectedPlan === "pro")}
+        ${checkoutPlanForm("team", "$129", "10 shared workspaces", selectedPlan === "team")}
+      </section>
+      <section class="resourceBox">
+        <p class="eyebrow">After Stripe returns</p>
+        <h2>Open the magic link, create a workspace token, then sync from the CLI.</h2>
+        <p>The return page checks the Stripe session, pre-fills the checkout email when Stripe provides it, and shows the exact workspace-token commands.</p>
+      </section>
+    </main>
+    ${proAccountScript()}
+  `);
+}
+
+function checkoutPlanForm(plan: "pro" | "team", price: string, workspaces: string, active: boolean): string {
+  const emailId = `checkout-page-email-${plan}`;
+  const couponId = `checkout-page-coupon-${plan}`;
+  const label = plan === "team" ? "Team" : "Pro";
+  return `<article class="checkoutPlan ${active ? "active" : ""}">
+    <p class="eyebrow">${label} / ${workspaces}</p>
+    <h2>${label} <span>${price}/mo</span></h2>
+    <p>${plan === "team" ? "For teams that need shared evidence, owner-managed setup, and weekly agent health reviews." : "For one operator who needs retained history, account workspaces, and remote MCP account tools."}</p>
+    <form class="checkoutForm" data-checkout-form data-plan="${plan}" data-price="${price.replace("$", "")}">
+      <label class="srOnly" for="${emailId}">Email for ${label} checkout</label>
+      <input id="${emailId}" name="email" type="email" autocomplete="email" placeholder="work email" required>
+      <label class="srOnly" for="${couponId}">Coupon code for ${label} checkout</label>
+      <input id="${couponId}" name="couponCode" type="text" autocomplete="off" placeholder="founder code (optional)">
+      <button class="btn btnPrimary" type="submit" data-fast-goal="checkout_start" data-fast-goal-plan="${plan}" data-fast-goal-price="${price.replace("$", "")}" data-fast-goal-location="checkout_page">Start ${label} checkout &rarr;</button>
+      <p class="checkoutStatus" data-checkout-status aria-live="polite"></p>
+    </form>
+  </article>`;
+}
+
 function checkoutSuccessPage(env: Env): string {
   const origin = baseURL(env);
   const tokenSetup = `# Open the magic link first. Its response includes session_token.
@@ -1531,7 +1661,13 @@ baseline sync push`;
       <p><a class="button primary" href="/docs/mcp">Open setup docs</a></p>
     </main>
     ${checkoutSuccessScript()}
-    <script>window.datafast && window.datafast("checkout_return_success", { provider: "stripe" });</script>
+    <script>
+      (function(){
+        var params = new URLSearchParams(location.search);
+        var coupon = params.get("coupon") || "";
+        window.datafast && window.datafast("checkout_return_success", { provider: "stripe", plan: params.get("plan") || "", coupon_present: Boolean(coupon), coupon_code: coupon });
+      })();
+    </script>
   `);
 }
 
@@ -1546,8 +1682,8 @@ function checkoutNeedsEmailPage(env: Env, plan: string): string {
     <main class="doc">
       <p class="eyebrow">Checkout paused</p>
       <h1>Add an email before ${escapeHTML(plan)} checkout.</h1>
-      <p>Baseline attaches checkout to an account before sending you to Stripe. Use the pricing form so your entitlement, magic link, and workspace token can be created after payment.</p>
-      <p><a class="button primary" href="/#pricing">Return to pricing</a></p>
+      <p>Baseline attaches checkout to an account before sending you to Stripe. Use the checkout page so your entitlement, magic link, and workspace token can be created after payment or founder-code testing.</p>
+      <p><a class="button primary" href="/checkout?plan=${escapeHTML(plan)}">Open checkout rules</a></p>
     </main>
   `);
 }
@@ -1566,7 +1702,13 @@ function checkoutCancelPage(env: Env): string {
       <p>The local Baseline CLI and MCP remain free. Paid plans are for monitored history, account workspaces, and team-visible evidence once the local loop is useful.</p>
       <p><a class="button secondary" href="/">Return home</a></p>
     </main>
-    <script>window.datafast && window.datafast("checkout_return_cancel", { provider: "stripe" });</script>
+    <script>
+      (function(){
+        var params = new URLSearchParams(location.search);
+        var coupon = params.get("coupon") || "";
+        window.datafast && window.datafast("checkout_return_cancel", { provider: "stripe", plan: params.get("plan") || "", coupon_present: Boolean(coupon), coupon_code: coupon });
+      })();
+    </script>
   `);
 }
 
@@ -1838,6 +1980,7 @@ function proAccountScript(): string {
         if (!button) return;
         const data = new FormData(form);
         const email = String(data.get("email") || "").trim();
+        const couponCode = String(data.get("couponCode") || "").trim();
         const plan = String(form.getAttribute("data-plan") || "pro");
         const price = String(form.getAttribute("data-price") || (plan === "team" ? "129" : "39"));
         if (!email) {
@@ -1846,16 +1989,17 @@ function proAccountScript(): string {
         }
         button.disabled = true;
         write("Opening Stripe checkout...");
-        window.datafast && window.datafast("checkout_start", { plan: plan, price: price, currency: "usd", location: "pricing_form" });
+        window.datafast && window.datafast("checkout_start", { plan: plan, price: price, currency: "usd", coupon_present: Boolean(couponCode), location: location.pathname === "/checkout" ? "checkout_page" : "pricing_form" });
         try {
           const response = await fetch("/api/checkout", {
             method: "POST",
             headers: { "content-type": "application/json", "accept": "application/json" },
-            body: JSON.stringify({ plan: plan, email, successUrl: location.origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}", cancelUrl: location.origin + "/checkout/cancel" })
+            body: JSON.stringify({ plan: plan, email: email, couponCode: couponCode })
           });
           const payload = await response.json();
           if (!response.ok || !payload.url) throw new Error(payload.error || "checkout_failed");
-          window.datafast && window.datafast("checkout_redirect", { plan: plan, provider: "stripe" });
+          if (payload.coupon_present) window.datafast && window.datafast("checkout_coupon_applied", { plan: payload.plan || plan, coupon_code: payload.coupon_code || "", location: location.pathname === "/checkout" ? "checkout_page" : "pricing_form" });
+          window.datafast && window.datafast("checkout_redirect", { plan: payload.plan || plan, provider: "stripe", coupon_present: Boolean(payload.coupon_present), coupon_code: payload.coupon_code || "" });
           window.location.assign(payload.url);
         } catch (error) {
           const message = error && error.message ? String(error.message) : "Checkout could not start.";
@@ -2039,13 +2183,13 @@ function layout(env: Env, meta: PageMeta, body: string): string {
 <body>
   <header class="nav">
     <a href="/" class="brandLockup"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a>
-    <nav class="navLinks"><a href="/#the-check">the check</a><a href="/docs/mcp">docs</a><a href="/#pricing">pricing</a><a href="/blog">field notes</a></nav>
+    <nav class="navLinks"><a href="/#the-check">the check</a><a href="/docs/mcp">docs</a><a href="/#pricing">pricing</a><a href="/checkout">checkout</a><a href="/blog">field notes</a></nav>
     <div class="navCtas"><a href="/dashboard" data-fast-goal="dashboard_click" data-fast-goal-location="nav">dashboard</a><a class="btn btnPrimary" href="/docs/mcp" data-fast-goal="install_click" data-fast-goal-location="nav">install</a></div>
   </header>
   ${body}
-  <footer><a href="/" class="brandLockup small"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a><a href="/docs/mcp">Docs</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>2026 TRACKBASELINE.COM</span></footer>
+  <footer><a href="/" class="brandLockup small"><span><img src="/assets/baseline-court-serve.png" alt=""></span><strong>baseline.</strong></a><a href="/docs/mcp">Docs</a><a href="/checkout">Checkout</a><a href="/blog">Blog</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>2026 TRACKBASELINE.COM</span></footer>
   <script>
-    document.querySelectorAll('a[href^="/api/checkout"], a[href="/docs/mcp"]').forEach(function(a){
+    document.querySelectorAll('a[href^="/api/checkout"], a[href^="/checkout"], a[href="/docs/mcp"]').forEach(function(a){
       a.addEventListener('click', function(){ navigator.sendBeacon && navigator.sendBeacon('/api/events', JSON.stringify({type:'cta_click', path: location.pathname, href: a.getAttribute('href')})); });
     });
     document.querySelectorAll('[data-copy-value]').forEach(function(button){
@@ -2414,6 +2558,18 @@ function css(): string {
     .checkoutForm input { min-height:46px; border:1px solid var(--ink); border-radius:0; background:transparent; color:var(--ink); padding:12px 14px; font-family:var(--mono); font-size:13px; width:100%; }
     .checkoutForm button { width:100%; }
     .checkoutStatus { min-height:22px; margin:0; color:var(--ash); font-size:12px; line-height:1.35; }
+    .checkoutRuleLink { margin:0; font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.06em; }
+    .checkoutRuleLink a { text-decoration:underline; text-underline-offset:3px; }
+    .checkoutRules { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; margin:32px 0; }
+    .checkoutRules div { border:1px solid var(--ink); padding:18px; background:rgba(255,249,234,.55); min-width:0; }
+    .checkoutRules span { display:block; font:900 13px/1 var(--mono); color:var(--clay); margin-bottom:12px; }
+    .checkoutRules h2 { font-size:clamp(1.25rem, 2.4vw, 1.8rem); margin-bottom:8px; }
+    .checkoutRules p { margin:0; color:var(--graphite); font-size:15px; line-height:1.45; }
+    .checkoutPlans { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; margin:30px 0; }
+    .checkoutPlan { border:3px solid var(--ink); background:var(--cream); box-shadow:var(--shadow); padding:24px; min-width:0; }
+    .checkoutPlan.active { background:var(--court-soft); }
+    .checkoutPlan h2 { display:flex; justify-content:space-between; gap:16px; align-items:baseline; }
+    .checkoutPlan h2 span { font-family:var(--mono); font-size:1rem; }
     .fieldNotes { background:var(--bone); }
     .noteGrid { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; }
     .noteCard { display:block; padding:22px 22px 24px; border:1px solid var(--ink); background:var(--paper); color:var(--ink); text-decoration:none; min-width:0; }
@@ -2450,7 +2606,7 @@ function css(): string {
       .navLinks { justify-content:flex-start; flex-wrap:wrap; gap:12px 18px; }
       .navCtas { justify-content:flex-start; flex-wrap:wrap; }
       footer { grid-template-columns:1fr; align-items:start; gap:14px; }
-      .fieldHero, .dailySection, .commandSection, .pricingIntro, .priceTable, .noteGrid, .closerSection { grid-template-columns:1fr; }
+      .fieldHero, .dailySection, .commandSection, .pricingIntro, .priceTable, .noteGrid, .closerSection, .checkoutRules, .checkoutPlans { grid-template-columns:1fr; }
       .fieldHero { min-height:0; }
       .heroStill { min-height:420px; border-right:0; border-bottom:1px solid var(--ink); }
       .heroCopy { padding:42px 20px; }
@@ -2519,6 +2675,7 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 Disallow: /dashboard
+Disallow: /checkout
 Disallow: /checkout/
 Sitemap: ${origin}/sitemap.xml
 `;

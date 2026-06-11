@@ -1,7 +1,7 @@
 # HANDOFF.md - Baseline.ai
 
 ## Current Thread
-- Working branch: `codex/deploy/bead-36-cf-production-redeploy`.
+- Working branch: `codex/feat/bead-37-checkout-router`.
 - Current request history:
   - Bead 23B: Pro account architecture doc committed as `96d2e28`.
   - Bead 23A: landing/design/docs/blog/pro checkout stub implementation committed as `257c17f`.
@@ -21,6 +21,7 @@
   - Bead 34 current-main redeploy: PR #7 and PR #8 were already merged, so current `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` was deployed from a clean release worktree as Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
   - Bead 35 Cloudflare CLI correction: future Cloudflare operations use `cf`, not direct `wrangler` or `npm run deploy`. `web/wrangler.jsonc` remains the Worker config filename/schema only.
   - Bead 36 `cf` production redeploy: PR #10 merged to `main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`. Production deployment `56391404-4f21-4b3f-b2fb-04a74aa29696` now has `source: api` and routes 100% traffic to Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`.
+  - Bead 37 checkout router: using `apollo-ecommerce-router` and Claude Fable 5 `subreview`, added a dedicated checkout rules page, founder coupon input path, Stripe promotion-code handling, Klaviyo master webhook routing, Datafa.st coupon/return telemetry, failed-webhook retry reprocessing, and production founder promotion-code secret binding. Production deploy/readback is pending.
 
 ## Key Context
 - Existing app is a Cloudflare Worker in `web/src/index.ts`.
@@ -35,6 +36,11 @@
 - Bead 33 public acquisition routes live under `/blog`, `/guides/...`, and `/resources/...`; `/dashboard`, `/admin`, and checkout return pages remain `noindex,follow` and are omitted from `/sitemap.xml`.
 - Lead-magnet requests post to `/api/events`, emit Klaviyo customer/master events when lifecycle email is configured, and are listed through protected `/api/admin/leads`.
 - Bead 34 changes checkout policy: paid checkout now requires an email-first Stripe Checkout Session so account metadata can provision entitlement. Stripe payment links are intentionally disabled for paid onboarding because they cannot guarantee account attribution.
+- Bead 37 keeps that policy and adds a single founder/test coupon path. `/checkout` explains the rules; public pricing cards and nav/footer link there; `/api/checkout` accepts only the configured founder code, applies `STRIPE_FOUNDER_PROMOTION_CODE_ID` server-side, uses `payment_method_collection=if_required`, and still grants entitlement only after verified Stripe webhook processing.
+- The live founder code is not printed on public pages. Operators pass it explicitly for test agents; public forms use neutral "founder code" placeholders.
+- Stripe promotion code readback for the founder path verified `active=true`, `max_redemptions=50`, `percent_off=100`, and `duration=forever`. Worker secrets now include `STRIPE_FOUNDER_PROMOTION_CODE_ID` and `BASELINE_MASTER_EMAIL`; do not print secret values.
+- Datafa.st checkout telemetry now includes checkout start, coupon-applied after server validation, redirect, success return, and cancel return events with plan/coupon presence. The Worker carries the `datafast_visitor_id` cookie into Stripe metadata when present.
+- Stripe webhook processing now reopens failed idempotency rows for retry instead of treating all repeated event ids as duplicates.
 - `/checkout/success` now requests the buyer's magic link and shows the workspace-token / `baseline sync on` path; `/api/checkout/session` fetches the exact Stripe session before returning any entitlement hint.
 - `/admin` now has an **Invite pilot** panel that calls `POST /api/admin/invites` and can grant pilot entitlement. Public pricing now has `/#pilot-request`, which records `pilot_request` events in the admin lead queue.
 - Public `/api/runs/latest` and `/api/runs/timeline` now exclude account-private Pro runs and fall back to labeled example/demo data.
@@ -57,6 +63,7 @@
 - BrandOS local repair lives in `/Users/kikimac/.hermes/repos/apollostreetcompany/skills-library/skills/brand-os-studio`: scripts now avoid PyYAML, use `python3`, and fall back to a bundled `.prose` validator when no `prose` CLI is installed.
 
 ## Active Beads
+- Bead 37 implementation state is in `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-35-checkout-router` on `codex/feat/bead-37-checkout-router`. Production deployment is not complete until the branch is committed, pushed, PR-reviewed/merged, uploaded as a new Worker version, deployed to traffic, and live checkout smokes pass.
 - Bead 36 production state is deployed from `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-prod-cf-deploy` on `origin/main` commit `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`.
 - Current Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` is live on `https://trackbaseline.com`; active deployment is `56391404-4f21-4b3f-b2fb-04a74aa29696`; rollback target is previous Fable copy polish Worker version `4966bc91-0e4a-4657-8589-96a14e78d2c1`.
 - Bead 32 Codex plugin v1 remains implemented and locally validated; productionizing next means CLI preflight/auto-install, clean Codex environment smoke tests, plugin assets, and CI schema validation.
@@ -78,6 +85,8 @@
 - `bash scripts/validate-codex-plugin.sh openclaw-plugin || true`
 - `npm --prefix package pack --dry-run`
 - `DATAFAST_TOKEN=... make analytics-report`
+- `curl -fsS https://trackbaseline.com/checkout`
+- `curl -sS -X POST https://trackbaseline.com/api/checkout -H 'content-type: application/json' --data '{"email":"codex-smoke+bead37@trackbaseline.com","plan":"pro","couponCode":"FounderBaseline"}'`
 - `curl -I https://trackbaseline.com/favicon.ico`
 - `cd /Users/kikimac/.hermes/repos/apollostreetcompany/skills-library && make verify-library && make verify-codex`
 
@@ -114,11 +123,13 @@
 - Bead 34 current-main redeploy: PR #7 (`7aa0a8b`) and PR #8 (`cda91d1`) were already merged when the deploy request arrived. The stale standalone branch `codex/feat/bead-34-website-clarity` was not merged because it would have overwritten newer commercial/Fable work. A clean release worktree at `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead34-main` deployed `origin/main` commit `cda91d1b3d3a8244cd8a11424ea39f963d8dc14b` as Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`. Validation passed: `make verify-all`, `git diff --check`, `npm --prefix web audit --audit-level=high`, historical pre-correction Wrangler dry run, production deploy, live homepage/blog/docs/robots/sitemap host smokes, `www` and workers.dev health, and unauthenticated `/mcp` 401 with bearer challenge plus `authentication_required`.
 - Bead 35 Cloudflare CLI correction: local `cf` is `/Users/kikimac/.hermes/node/bin/cf`. `cf auth whoami`, `cf agent-context workers`, and `cf workers deployments list --script-name baseline-ai` passed with sourced operator env and confirmed deployment `36ecaeb4-2ef8-48dc-8f01-678378ca7c08` serves Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7` at 100% traffic. `web/package.json` now uses `cf dev`, and `npm run deploy` intentionally exits with guidance to the documented `cf` workflow.
 - Bead 36 `cf` production redeploy: PR #10 was merged to `main` at `cb54ea1a7c04194ab41f2744765a97fbd4b1ac67`; diff review showed no changes to `web/src`, `web/public`, or `web/wrangler.jsonc` since the active app version, so `cf workers deployments create` routed 100% traffic to existing Worker version `d313f92f-bb02-47b0-81ec-8d571dc61ed7`. Active deployment readback: `56391404-4f21-4b3f-b2fb-04a74aa29696`, `source: api`, created `2026-06-10T08:29:54.585318Z`. Validation passed: `make verify-all`, `git diff --check`, `npm --prefix web audit --audit-level=high`, `npm --prefix web run deploy` guard, `cf` dry-run/create/readback, apex/`www`/workers.dev health, homepage/docs markers, unauthenticated `POST /mcp` 401 with bearer challenge, and unauthenticated `/api/admin/leads` 401.
+- Bead 37 subreview and local validation: first planless `subreview` correctly flagged there was no reviewable plan. A concrete plan was added at `docs/plans/2026-06-11-001-bead-37-checkout-router.md`; Claude Fable 5 implementation review completed at `/tmp/baseline-subreview-checkout-implementation/claude.md` and its commercial checkout findings were acted on. Local checks passed for `npm --prefix web run typecheck`, `make verify`, `git diff --check`, `npm --prefix web audit --audit-level=high`, Stripe promotion-code readback, Cloudflare secret presence readback, local Worker smokes for `/`, `/checkout`, `/api/checkout`, `/checkout/success`, `/checkout/cancel`, `/robots.txt`, and Playwright desktop/mobile no-overflow checks with screenshots at `/tmp/baseline-checkout-desktop-final.png` and `/tmp/baseline-checkout-mobile-final.png`.
 
 ## Open Risks
 - Live Stripe, Klaviyo, Neon, and deployment verification require production/staging secrets and must never print secret values.
 - DataFast token handling must use no-echo or secret storage; a plain TTY `read` echoed the token once during setup and is recorded in `MISTAKES.md`.
 - Real paid pilot launch still needs an end-to-end checkout with an intended pilot email, webhook entitlement confirmation, magic-link login, token issuance, redacted sync, remote MCP account-status smoke, and Klaviyo flow verification for `Baseline Lead Magnet Requested`, `Baseline Pilot Requested`, `Baseline Magic Link`, and `Baseline Subscription Started`.
+- Bead 37 founder-code smoke should create a live Stripe Checkout Session without completing it, inspect the Stripe session metadata/discount, and avoid printing Stripe secrets. A completed founder checkout/webhook entitlement smoke still requires an operator-controlled browser checkout session.
 - The remote MCP implementation is an HTTP JSON-RPC endpoint shaped for MCP clients; before public announcement it should be smoke-tested against the exact target clients that will register it.
 - `npm audit --audit-level=high` passes, but Wrangler/Miniflare currently pulls three moderate `ws` advisories; `npm audit fix --force` would downgrade Wrangler and is not applied.
 - The skills-library repo has many unrelated pre-existing dirty changes on branch `codex/skill-audit-apply-downloads`; stage only BrandOS-specific files if committing that repair separately.
