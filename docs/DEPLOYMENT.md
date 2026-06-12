@@ -86,6 +86,7 @@ Required before a Bead 38 production deploy:
 - Do not deploy a Worker version unless readback shows the complete production binding set or all Worker-only secret values are rehydrated from an approved secret manager.
 - Treat `cf workers scripts content update` and `wrangler deploy --keep-vars` as unsafe for this Worker until proven otherwise in a non-production clone with secret-binding readback.
 - The next deploy attempt should start from current healthy version `0ddb077d-5188-4256-98eb-baf449a30d4c`, not from the stripped-binding versions above.
+- Claude Fable 5 `subreview` retry completed at `/tmp/baseline-subreview-bead38-fable5-working-20260612T0538Z/` with 1 completed reviewer and 0 failures. Do not deploy Bead 38 until the review blockers are addressed or intentionally accepted: durable magic-link delivery, live buyer Klaviyo flow trigger verification, failed-outbox retry/drain handling, master-event PII/redaction policy, structural `stripe_founder` preservation, and dashboard empty-state demo-score removal.
 
 ## 2026-06-11 Checkout Router Production Deploy
 
