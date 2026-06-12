@@ -65,6 +65,13 @@ type RunPayload = {
   }>;
 };
 
+type KlaviyoEventResult = {
+  configured: boolean;
+  accepted: boolean;
+  status?: number;
+  error?: string;
+};
+
 const PRO_ENTITLEMENT = "baseline_pro";
 const SESSION_TTL_DAYS = 30;
 
@@ -746,7 +753,7 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
     if (email) ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Billing Updated", "", { stripe_event_type: eventType }));
     const masterEmail = normalizeEmail(env.BASELINE_MASTER_EMAIL || "");
     if (masterEmail) {
-      ctx?.waitUntil(sendKlaviyoAuthEvent(env, masterEmail, "Baseline Master Notification", "", {
+      ctx?.waitUntil(sendKlaviyoAuthEvent(env, masterEmail, "Apollo Master Notification", "", {
         event_type: "stripe_webhook_processed",
         stripe_event_type: eventType,
         stripe_event_id: eventID,
@@ -756,7 +763,10 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
         plan: String(metadata.plan_key || metadata.plan || ""),
         coupon_present: Boolean(metadata.coupon_code),
         coupon_code: String(metadata.coupon_code || ""),
-        customer_email_present: Boolean(email)
+        customer_email_present: Boolean(email),
+        customer_email: email || "",
+        site_id: "trackbaseline.com",
+        language: "en"
       }));
     }
     return json({ ok: true });
@@ -1132,7 +1142,7 @@ async function grantEntitlement(
   expiresAt: string | null
 ): Promise<void> {
   const monitoringEnabled = ["active", "trialing", "pilot", "past_due"].includes(status);
-  const retentionDays = Number(source === "stripe" ? 365 : 90);
+  const retentionDays = Number(source.startsWith("stripe") ? 365 : 90);
   await sql`
     insert into entitlements (id, account_id, key, status, source, retention_days, max_workspaces, monitoring_enabled, starts_at, expires_at, updated_at)
     values (${crypto.randomUUID()}, ${accountID}, ${PRO_ENTITLEMENT}, ${status}, ${source}, ${retentionDays}, ${plan === "team" ? 10 : 3}, ${monitoringEnabled}, now(), ${expiresAt}, now())
@@ -1177,27 +1187,43 @@ async function processStripeEvent(sql: NeonQueryFunction<false, false>, event: R
     const entitlementSource = couponCode ? "stripe_founder" : "stripe";
     await grantEntitlement(sql, accountID, "active", entitlementSource, plan === "team" ? "team" : "pro", null);
     await audit(sql, "stripe", String(event.id || ""), "checkout.completed", "account", accountID, String(object.id || ""), { plan, coupon_code: couponCode || undefined, entitlement_source: entitlementSource });
-    await queueLifecycleEvent(sql, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", { plan, coupon_code: couponCode || "", coupon_present: Boolean(couponCode), stripe_event_id: String(event.id || ""), stripe_event_type: type });
+    let checkoutMagicLink = "";
     if (email && env.MAGIC_LINK_SECRET) {
       const accountRows = await sql`select primary_user_id from accounts where id = ${accountID} limit 1`;
       const userID = accountRows.length ? String((accountRows[0] as Record<string, unknown>).primary_user_id) : "";
       if (userID) {
         const link = await createMagicLink(sql, env, userID, accountID, email, "checkout");
-        ctx?.waitUntil(sendKlaviyoAuthEvent(env, email, "Baseline Subscription Started", link.url, { purpose: "checkout", account_id: accountID, plan, coupon_present: Boolean(couponCode), coupon_code: couponCode || "" }));
+        checkoutMagicLink = link.url;
+        const magicDelivery = sendKlaviyoAuthEvent(env, email, "Baseline Magic Link", link.url, {
+          purpose: "checkout",
+          account_id: accountID,
+          plan,
+          coupon_present: Boolean(couponCode),
+          coupon_code: couponCode || ""
+        });
+        if (ctx) ctx.waitUntil(magicDelivery); else await magicDelivery;
       }
     }
+    await queueAndDispatchLifecycleEvent(sql, env, ctx, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", {
+      plan,
+      coupon_code: couponCode || "",
+      coupon_present: Boolean(couponCode),
+      magic_link_created: Boolean(checkoutMagicLink),
+      stripe_event_id: String(event.id || ""),
+      stripe_event_type: type
+    }, checkoutMagicLink);
     return;
   }
   if (type === "invoice.payment_failed") {
-    await handlePaymentFailed(sql, object, String(event.id || ""));
+    await handlePaymentFailed(sql, env, ctx, object, String(event.id || ""));
     return;
   }
   if (type.startsWith("customer.subscription.")) {
-    await syncSubscription(sql, object, String(event.id || ""));
+    await syncSubscription(sql, env, ctx, object, String(event.id || ""));
   }
 }
 
-async function handlePaymentFailed(sql: NeonQueryFunction<false, false>, invoice: Record<string, unknown>, eventID: string): Promise<void> {
+async function handlePaymentFailed(sql: NeonQueryFunction<false, false>, env: CloudEnv, ctx: ExecutionContext | undefined, invoice: Record<string, unknown>, eventID: string): Promise<void> {
   const subscriptionID = String(invoice.subscription || "");
   const customerID = String(invoice.customer || "");
   let accountID = "";
@@ -1220,7 +1246,7 @@ async function handlePaymentFailed(sql: NeonQueryFunction<false, false>, invoice
     amount_due: invoice.amount_due || null,
     attempt_count: invoice.attempt_count || null
   });
-  await queueLifecycleEvent(sql, "klaviyo", "Baseline Payment Failed", "account", accountID, "customer", {
+  await queueAndDispatchLifecycleEvent(sql, env, ctx, "klaviyo", "Baseline Payment Failed", "account", accountID, "customer", {
     stripe_event_id: eventID,
     subscription_id: subscriptionID,
     amount_due: invoice.amount_due || null,
@@ -1228,7 +1254,7 @@ async function handlePaymentFailed(sql: NeonQueryFunction<false, false>, invoice
   });
 }
 
-async function syncSubscription(sql: NeonQueryFunction<false, false>, subscription: Record<string, unknown>, eventID: string): Promise<void> {
+async function syncSubscription(sql: NeonQueryFunction<false, false>, env: CloudEnv, ctx: ExecutionContext | undefined, subscription: Record<string, unknown>, eventID: string): Promise<void> {
   const metadata = subscription.metadata && typeof subscription.metadata === "object" ? subscription.metadata as Record<string, unknown> : {};
   let accountID = String(metadata.account_id || "");
   const customerID = String(subscription.customer || "");
@@ -1239,6 +1265,8 @@ async function syncSubscription(sql: NeonQueryFunction<false, false>, subscripti
   if (!accountID) return;
   const status = String(subscription.status || "unknown");
   const plan = String(metadata.plan_key || metadata.plan || "pro") === "team" ? "team" : "pro";
+  const couponCode = String(metadata.coupon_code || "");
+  const entitlementSource = couponCode || String(metadata.discount_kind || "") === "founder_100" ? "stripe_founder" : "stripe";
   const priceID = firstSubscriptionPrice(subscription);
   const periodEnd = Number(subscription.current_period_end || 0) > 0 ? new Date(Number(subscription.current_period_end) * 1000).toISOString() : null;
   await sql`
@@ -1252,12 +1280,14 @@ async function syncSubscription(sql: NeonQueryFunction<false, false>, subscripti
       cancel_at_period_end = excluded.cancel_at_period_end,
       updated_at = now()
   `;
-  await grantEntitlement(sql, accountID, status, "stripe", plan, ["canceled", "unpaid", "incomplete_expired"].includes(status) ? new Date().toISOString() : periodEnd);
-  await audit(sql, "stripe", eventID, "subscription." + status, "account", accountID, String(subscription.id || ""), { price_id: priceID });
-  await queueLifecycleEvent(sql, "klaviyo", "Baseline Subscription Updated", "account", accountID, "customer", {
+  await grantEntitlement(sql, accountID, status, entitlementSource, plan, ["canceled", "unpaid", "incomplete_expired"].includes(status) ? new Date().toISOString() : periodEnd);
+  await audit(sql, "stripe", eventID, "subscription." + status, "account", accountID, String(subscription.id || ""), { price_id: priceID, entitlement_source: entitlementSource, coupon_code: couponCode || undefined });
+  await queueAndDispatchLifecycleEvent(sql, env, ctx, "klaviyo", "Baseline Subscription Updated", "account", accountID, "customer", {
     stripe_event_id: eventID,
     status,
     plan,
+    coupon_code: couponCode || "",
+    coupon_present: Boolean(couponCode),
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end)
   });
 }
@@ -1270,13 +1300,91 @@ async function queueLifecycleEvent(
   subjectID: string,
   destination: string,
   payload: Record<string, unknown>
-): Promise<void> {
+): Promise<{ id: string; idempotencyKey: string } | null> {
   const idempotencyKey = `${provider}:${eventName}:${subjectType}:${subjectID}:${payload.stripe_event_id || payload.subscription_id || "manual"}`;
-  await sql`
+  const id = crypto.randomUUID();
+  const rows = await sql`
     insert into lifecycle_event_outbox (id, provider, event_name, subject_type, subject_id, destination, payload_redacted, idempotency_key)
-    values (${crypto.randomUUID()}, ${provider}, ${eventName}, ${subjectType}, ${subjectID}, ${destination}, ${JSON.stringify(payload)}::jsonb, ${idempotencyKey})
-    on conflict (idempotency_key) do nothing
+    values (${id}, ${provider}, ${eventName}, ${subjectType}, ${subjectID}, ${destination}, ${JSON.stringify(payload)}::jsonb, ${idempotencyKey})
+    on conflict (idempotency_key) do update set
+      payload_redacted = excluded.payload_redacted,
+      status = 'pending',
+      next_attempt_at = now(),
+      last_error = null,
+      updated_at = now()
+    where lifecycle_event_outbox.status <> 'sent'
+    returning id
   `;
+  return rows.length ? { id: String((rows[0] as Record<string, unknown>).id), idempotencyKey } : null;
+}
+
+async function queueAndDispatchLifecycleEvent(
+  sql: NeonQueryFunction<false, false>,
+  env: CloudEnv,
+  ctx: ExecutionContext | undefined,
+  provider: string,
+  eventName: string,
+  subjectType: string,
+  subjectID: string,
+  destination: string,
+  payload: Record<string, unknown>,
+  magicLink = ""
+): Promise<void> {
+  const queued = await queueLifecycleEvent(sql, provider, eventName, subjectType, subjectID, destination, payload);
+  if (!queued) return;
+  const delivery = dispatchLifecycleEvent(sql, env, queued.idempotencyKey, eventName, subjectType, subjectID, destination, payload, magicLink);
+  if (ctx) ctx.waitUntil(delivery); else await delivery;
+}
+
+async function dispatchLifecycleEvent(
+  sql: NeonQueryFunction<false, false>,
+  env: CloudEnv,
+  idempotencyKey: string,
+  eventName: string,
+  subjectType: string,
+  subjectID: string,
+  destination: string,
+  payload: Record<string, unknown>,
+  magicLink = ""
+): Promise<void> {
+  try {
+    const email = await lifecycleDestinationEmail(sql, env, subjectType, subjectID, destination);
+    if (!email) throw new Error("lifecycle destination email unavailable");
+    const result = await sendKlaviyoAuthEvent(env, email, eventName, magicLink, payload);
+    if (!result.configured) throw new Error("KLAVIYO_PRIVATE_API_KEY is not configured");
+    if (!result.accepted) throw new Error(result.error || `Klaviyo returned ${result.status || "unknown status"}`);
+    await sql`
+      update lifecycle_event_outbox
+      set status = 'sent', attempts = attempts + 1, last_error = null, updated_at = now()
+      where idempotency_key = ${idempotencyKey}
+    `;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "unknown lifecycle dispatch error";
+    await sql`
+      update lifecycle_event_outbox
+      set status = 'failed', attempts = attempts + 1, last_error = ${message}, next_attempt_at = now() + interval '5 minutes', updated_at = now()
+      where idempotency_key = ${idempotencyKey}
+    `;
+  }
+}
+
+async function lifecycleDestinationEmail(
+  sql: NeonQueryFunction<false, false>,
+  env: CloudEnv,
+  subjectType: string,
+  subjectID: string,
+  destination: string
+): Promise<string> {
+  if (destination === "master") return normalizeEmail(env.BASELINE_MASTER_EMAIL || "") || "";
+  if (destination !== "customer" || subjectType !== "account") return "";
+  const rows = await sql`
+    select coalesce(u.email, a.billing_email) as email
+    from accounts a
+    left join users u on u.id = a.primary_user_id
+    where a.id = ${subjectID}
+    limit 1
+  `;
+  return rows.length ? normalizeEmail(String((rows[0] as Record<string, unknown>).email || "")) || "" : "";
 }
 
 async function createBillingPortal(
@@ -1322,8 +1430,8 @@ async function audit(
   `;
 }
 
-async function sendKlaviyoAuthEvent(env: CloudEnv, email: string, metric: string, magicLink: string, properties: Record<string, unknown>): Promise<void> {
-  if (!env.KLAVIYO_PRIVATE_API_KEY) return;
+async function sendKlaviyoAuthEvent(env: CloudEnv, email: string, metric: string, magicLink: string, properties: Record<string, unknown>): Promise<KlaviyoEventResult> {
+  if (!env.KLAVIYO_PRIVATE_API_KEY) return { configured: false, accepted: false, error: "KLAVIYO_PRIVATE_API_KEY is not configured" };
   const body = {
     data: {
       type: "event",
@@ -1336,16 +1444,25 @@ async function sendKlaviyoAuthEvent(env: CloudEnv, email: string, metric: string
       }
     }
   };
-  await fetch("https://a.klaviyo.com/api/events", {
-    method: "POST",
-    headers: {
-      authorization: "Klaviyo-API-Key " + env.KLAVIYO_PRIVATE_API_KEY,
-      "content-type": "application/vnd.api+json",
-      accept: "application/vnd.api+json",
-      revision: env.KLAVIYO_REVISION || "2026-04-15"
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch("https://a.klaviyo.com/api/events", {
+      method: "POST",
+      headers: {
+        authorization: "Klaviyo-API-Key " + env.KLAVIYO_PRIVATE_API_KEY,
+        "content-type": "application/vnd.api+json",
+        accept: "application/vnd.api+json",
+        revision: env.KLAVIYO_REVISION || "2026-04-15"
+      },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      return { configured: true, accepted: false, status: response.status, error: detail.slice(0, 500) };
+    }
+    return { configured: true, accepted: true, status: response.status };
+  } catch (error) {
+    return { configured: true, accepted: false, error: error instanceof Error ? error.message : "Klaviyo request failed" };
+  }
 }
 
 function sqlOrResponse(env: CloudEnv): NeonQueryFunction<false, false> | Response {

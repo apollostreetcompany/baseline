@@ -331,7 +331,7 @@ export default {
 
 async function latestRun(request: Request, env: Env): Promise<Response> {
   const sql = configuredSQL(env);
-  if (!sql) return json({ ok: true, configured: false, run: demoRun(), origin: baseURL(env, request) });
+  if (!sql) return json({ ok: true, configured: false, demo: true, empty_state: true, run: demoRun(), origin: baseURL(env, request) });
   await ensureSchema(sql);
   const rows = await sql`
     select id, workspace, agent_kind, status, health_score, mode, payload, created_at
@@ -341,12 +341,12 @@ async function latestRun(request: Request, env: Env): Promise<Response> {
     limit 1
   `;
   const run = rows.length ? normalizeRun(rows[0] as Record<string, unknown>) : demoRun();
-  return json({ ok: true, configured: true, demo: !rows.length, run, origin: baseURL(env, request) });
+  return json({ ok: true, configured: true, demo: !rows.length, empty_state: !rows.length, run, origin: baseURL(env, request) });
 }
 
 async function runTimeline(env: Env): Promise<Response> {
   const sql = configuredSQL(env);
-  if (!sql) return json({ ok: true, configured: false, runs: [demoRun()] });
+  if (!sql) return json({ ok: true, configured: false, demo: true, empty_state: true, runs: [] });
   await ensureSchema(sql);
   const rows = await sql`
     select id, workspace, agent_kind, status, health_score, mode, payload, created_at
@@ -355,7 +355,7 @@ async function runTimeline(env: Env): Promise<Response> {
     order by created_at desc
     limit 30
   `;
-  return json({ ok: true, configured: true, demo: !rows.length, runs: rows.length ? rows.map((row) => normalizeRun(row as Record<string, unknown>)) : [demoRun()] });
+  return json({ ok: true, configured: true, demo: !rows.length, empty_state: !rows.length, runs: rows.map((row) => normalizeRun(row as Record<string, unknown>)) });
 }
 
 async function listQuestionSets(env: Env, admin: boolean, request?: Request): Promise<Response> {
@@ -945,13 +945,15 @@ async function emitCheckoutStartedEvents(env: Env, email: string | undefined, pl
     }),
     emitKlaviyoEvent(env, {
       email: normalizeOptionalEmail(env.BASELINE_MASTER_EMAIL),
-      metric: "Baseline Master Notification",
+      metric: "Apollo Master Notification",
       uniqueId: "master:" + uniqueId,
       time,
       properties: {
         ...properties,
         event_type: "checkout_started",
-        customer_email_present: Boolean(email)
+        customer_email_present: Boolean(email),
+        customer_email: email || "",
+        language: "en"
       }
     })
   ]);
@@ -983,7 +985,7 @@ async function emitLeadMagnetRequestedEvents(env: Env, payload: Record<string, u
     }),
     emitKlaviyoEvent(env, {
       email: masterEmail,
-      metric: "Baseline Master Notification",
+      metric: "Apollo Master Notification",
       uniqueId: "master:" + uniqueId,
       time,
       properties: {
@@ -1730,6 +1732,19 @@ function dashboardPage(env: Env): string {
         <a class="button secondary" href="/docs/mcp">Connect MCP</a>
       </section>
       <div id="dashboard-demo-banner" class="alert warning" hidden>Example data. Account-private Pro runs are visible only after authenticated account access.</div>
+      <section id="dashboard-empty-state" class="dashboardEmptyState" hidden>
+        <div>
+          <p class="eyebrow">No synced run yet</p>
+          <h2>Start local, then sync one reviewed run.</h2>
+          <p>Run Baseline from the repo you care about, accept a clean local report, then connect a Pro workspace token. The dashboard becomes useful after the first redacted sync lands.</p>
+        </div>
+        ${copyCommandBlock(`baseline setup
+baseline run --mode fast
+baseline report RUN_ID
+baseline accept RUN_ID --confirm "accept RUN_ID"
+baseline sync on --url ${baseURL(env)} --token YOUR_BASELINE_TOKEN
+baseline sync push`, "First dashboard sync")}
+      </section>
       ${dashboardVisual(true)}
       <section class="band two">
         <div class="panel"><h2>What changed since the last run?</h2><div id="changed-since-last"><div class="alert warning">Waiting for at least one synced Baseline run.</div></div></div>
@@ -1740,7 +1755,7 @@ baseline run --mode fast
 baseline report RUN_ID
 baseline accept RUN_ID \\
   --confirm "accept RUN_ID"
-baseline compare</code></pre></div>
+baseline sync push</code></pre></div>
         <div class="panel"><h2>Latest findings</h2><div id="latest-findings"><div class="alert warning">Waiting for synced Baseline runs.</div></div></div>
         <div class="panel"><h2>Recent runs</h2><table id="run-timeline"><tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr></table></div>
       </section>
@@ -2030,15 +2045,22 @@ function dashboardScript(): string {
         const latestResp = await fetch("/api/runs/latest", { headers: { "accept": "application/json" } });
         const latest = await latestResp.json();
         const run = latest.run || {};
-        const demo = latest.configured === false || latest.demo === true || run.run_id === "demo_run";
+        const emptyState = latest.empty_state === true || latest.demo === true || !run.run_id || run.run_id === "demo_run";
+        const demo = latest.configured === false || emptyState;
         const demoBanner = document.getElementById("dashboard-demo-banner");
         if (demoBanner) demoBanner.hidden = !demo;
+        const emptyStateEl = document.getElementById("dashboard-empty-state");
+        if (emptyStateEl) emptyStateEl.hidden = !emptyState;
         const score = Number(run.health_score || 0);
         const checks = Array.isArray(run.checks) ? run.checks : [];
         const warnings = Number(run.warning_count == null ? checks.filter(function(check){ return check.status !== "ok"; }).length : run.warning_count);
         const duration = Number(run.duration_ms || 0);
         const status = text(run.status || "unknown");
-        setText("dashboard-summary", (demo ? "Example " : "Latest ") + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
+        if (emptyState) {
+          setText("dashboard-summary", "No synced Baseline runs are visible yet.");
+        } else {
+          setText("dashboard-summary", "Latest " + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
+        }
         setText("frame-run", "baseline " + shortRun(run.run_id));
         setText("frame-score", "score " + score);
         setText("health-score", String(score));
@@ -2048,18 +2070,23 @@ function dashboardScript(): string {
             const klass = check.status === "ok" ? "okDot" : (check.status === "critical" ? "badDot" : "warnDot");
             return "<p><span class=\\"dot " + klass + "\\"></span>" + esc(check.check_id || check.kind || "check") + " " + esc(check.status || "unknown") + "</p>";
           });
-          signals.innerHTML = rows.length ? rows.join("") : "<p><span class=\\"dot warnDot\\"></span>No checks received</p>";
+          signals.innerHTML = emptyState ? "<p><span class=\\"dot warnDot\\"></span>Waiting for sync</p><p><span class=\\"dot okDot\\"></span>Run locally first</p><p><span class=\\"dot okDot\\"></span>Raw output stays local</p>" : (rows.length ? rows.join("") : "<p><span class=\\"dot warnDot\\"></span>No checks received</p>");
         }
         const findings = document.getElementById("latest-findings");
         if (findings) {
           const bad = checks.filter(function(check){ return check.status !== "ok"; }).slice(0, 6);
-          findings.innerHTML = (bad.length ? bad : checks.slice(0, 3)).map(function(check){
+          findings.innerHTML = emptyState ? "<div class=\\"alert warning\\">No synced checks yet. Run <code>baseline setup</code>, <code>baseline run --mode fast</code>, review the report, then sync.</div>" : (bad.length ? bad : checks.slice(0, 3)).map(function(check){
             return "<div class=\\"alert " + statusClass(check.status) + "\\">" + esc(check.check_id || "check") + ": " + esc(check.status || "unknown") + " · " + Math.round(Number(check.score || 0)) + "</div>";
           }).join("") || "<div class=\\"alert warning\\">No synced checks yet.</div>";
         }
         const grid = document.getElementById("probe-grid");
         if (grid) {
-          grid.innerHTML = checks.slice(0, 8).map(function(check){
+          grid.innerHTML = emptyState ? [
+            "<div><strong>setup</strong><span>run locally</span></div>",
+            "<div><strong>report</strong><span>review</span></div>",
+            "<div><strong>accept</strong><span>clean run</span></div>",
+            "<div><strong>sync</strong><span>push redacted</span></div>"
+          ].join("") : checks.slice(0, 8).map(function(check){
             return "<div><strong>" + esc(check.kind || check.check_id || "probe") + "</strong><span>" + esc(check.status || "unknown") + "</span></div>";
           }).join("");
         }
@@ -2068,18 +2095,20 @@ function dashboardScript(): string {
         const runs = Array.isArray(timeline.runs) ? timeline.runs : [];
         const previous = runs.length > 1 ? runs[1] : null;
         const scoreDelta = previous ? score - Number(previous.health_score || 0) : 0;
-        setHTML("changed-since-last", previous ? "<div class=\\"alert " + (scoreDelta < 0 ? "warning" : "ok") + "\\">Score changed " + (scoreDelta >= 0 ? "+" : "") + scoreDelta + " since " + esc(shortRun(previous.run_id)) + ". Current mode: " + esc(run.mode || "unknown") + "; duration: " + Math.round(duration) + "ms.</div>" : "<div class=\\"alert warning\\">First synced run loaded. Run Baseline again to show drift against recent history.</div>");
-        setHTML("current-risk", "<div class=\\"alert " + statusClass(status) + "\\">Status " + esc(status) + ", score " + score + ", warnings " + warnings + ".</div>");
-        setHTML("next-action", "<div class=\\"alert " + (status === "ok" && warnings === 0 ? "ok" : "warning") + "\\">" + esc(actionFor(status, warnings)) + "</div>");
+        setHTML("changed-since-last", emptyState ? "<div class=\\"alert warning\\">Nothing to compare yet. Sync one reviewed run, then a second run will show drift.</div>" : (previous ? "<div class=\\"alert " + (scoreDelta < 0 ? "warning" : "ok") + "\\">Score changed " + (scoreDelta >= 0 ? "+" : "") + scoreDelta + " since " + esc(shortRun(previous.run_id)) + ". Current mode: " + esc(run.mode || "unknown") + "; duration: " + Math.round(duration) + "ms.</div>" : "<div class=\\"alert warning\\">First synced run loaded. Run Baseline again to show drift against recent history.</div>"));
+        setHTML("current-risk", emptyState ? "<div class=\\"alert warning\\">Unknown until a local run is synced. Do not treat sample data as account evidence.</div>" : "<div class=\\"alert " + statusClass(status) + "\\">Status " + esc(status) + ", score " + score + ", warnings " + warnings + ".</div>");
+        setHTML("next-action", emptyState ? "<div class=\\"alert warning\\">Open the magic link, create a workspace token, run the local commands, then push the redacted report.</div>" : "<div class=\\"alert " + (status === "ok" && warnings === 0 ? "ok" : "warning") + "\\">" + esc(actionFor(status, warnings)) + "</div>");
         const table = document.getElementById("run-timeline");
         if (table) {
-          table.innerHTML = "<tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>" + runs.slice(0, 12).map(function(row){
+          table.innerHTML = "<tr><th>Run</th><th>Score</th><th>Status</th><th>Mode</th></tr>" + (emptyState ? "<tr><td colspan=\\"4\\">No synced runs yet.</td></tr>" : runs.slice(0, 12).map(function(row){
             return "<tr><td>" + esc(shortRun(row.run_id)) + "</td><td>" + Number(row.health_score || 0) + "</td><td>" + esc(row.status || "unknown") + "</td><td>" + esc(row.mode || "unknown") + "</td></tr>";
-          }).join("");
+          }).join(""));
         }
       } catch (error) {
         const demoBanner = document.getElementById("dashboard-demo-banner");
         if (demoBanner) demoBanner.hidden = false;
+        const emptyStateEl = document.getElementById("dashboard-empty-state");
+        if (emptyStateEl) emptyStateEl.hidden = false;
         setText("dashboard-summary", "Dashboard could not load run data.");
         setHTML("next-action", "<div class=\\"alert warning\\">Run baseline setup locally, then sync a redacted run before relying on the dashboard.</div>");
       }
@@ -2380,6 +2409,9 @@ function css(): string {
     .dashHead { padding:48px max(28px, calc((100vw - 1180px) / 2)) 18px; display:flex; justify-content:space-between; gap:24px; align-items:end; }
     .dashHead h1 { font-size:2.6rem; max-width:760px; line-height:1.05; }
     .dashboard > .productFrame { margin:0 max(28px, calc((100vw - 1180px) / 2)); }
+    .dashboardEmptyState { margin:0 max(28px, calc((100vw - 1180px) / 2)) 24px; display:grid; grid-template-columns:minmax(0, .9fr) minmax(320px, 1.1fr); gap:18px; align-items:start; border:3px solid var(--line); border-radius:8px; padding:22px; background:var(--cream); box-shadow:var(--shadow); }
+    .dashboardEmptyState h2 { font-size:2.2rem; margin-bottom:12px; }
+    .dashboardEmptyState p { margin:0; }
     .productFrame { width:min(900px, 92vw); min-height:430px; border:3px solid var(--line); border-radius:8px; background:#fbfcfe; box-shadow:var(--shadow); overflow:hidden; }
     .frameTop { height:48px; display:flex; align-items:center; gap:12px; padding:0 18px; border-bottom:2px solid var(--line); background:#fff; }
     .frameTop span { width:10px; height:10px; border-radius:50%; background:var(--red); box-shadow:18px 0 var(--amber), 36px 0 var(--green); margin-right:42px; }
@@ -2593,7 +2625,7 @@ function css(): string {
       h1 { font-size:3.4rem; }
       h2, .doc h1 { font-size:2.4rem; }
       .lede { font-size:1.15rem; max-width:390px; }
-      .two, .metricStrip, .steps, .priceGrid, .scoreRow, .probeGrid, .docGrid, .imageBand, .pricing, .blogGrid, .adminPanelGrid { grid-template-columns:1fr; }
+      .two, .metricStrip, .steps, .priceGrid, .scoreRow, .probeGrid, .docGrid, .imageBand, .pricing, .blogGrid, .adminPanelGrid, .dashboardEmptyState { grid-template-columns:1fr; }
       .leadCapture { grid-template-columns:1fr; box-shadow:3px 3px 0 var(--ink); }
       .metricStrip div + div { border-left:0; border-top:3px solid var(--line); }
       .imageStack img:nth-child(2) { margin-left:0; width:100%; }
@@ -2601,6 +2633,7 @@ function css(): string {
       .band { padding:46px 18px; }
       .dashHead { padding:36px 18px 18px; display:block; }
       .dashHead h1 { font-size:2rem; }
+      .dashboardEmptyState { margin:0 18px 20px; }
       .dashboard > .productFrame, .productFrame { width:auto; margin:0 18px; min-height:0; }
       .nav { grid-template-columns:1fr; align-items:start; gap:14px; padding:14px 18px; position:static; }
       .navLinks { justify-content:flex-start; flex-wrap:wrap; gap:12px 18px; }
