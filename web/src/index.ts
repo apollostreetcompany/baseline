@@ -952,7 +952,6 @@ async function emitCheckoutStartedEvents(env: Env, email: string | undefined, pl
         ...properties,
         event_type: "checkout_started",
         customer_email_present: Boolean(email),
-        customer_email: email || "",
         language: "en"
       }
     })
@@ -988,10 +987,7 @@ async function emitLeadMagnetRequestedEvents(env: Env, payload: Record<string, u
       metric: "Apollo Master Notification",
       uniqueId: "master:" + uniqueId,
       time,
-      properties: {
-        ...properties,
-        customer_email: email || ""
-      }
+      properties
     })
   ]);
 }
@@ -2061,9 +2057,9 @@ function dashboardScript(): string {
         } else {
           setText("dashboard-summary", "Latest " + text(run.agent_kind || "agent") + " run is " + status + " with score " + score + ", " + warnings + " warnings, and mode " + text(run.mode || "unknown") + ".");
         }
-        setText("frame-run", "baseline " + shortRun(run.run_id));
-        setText("frame-score", "score " + score);
-        setText("health-score", String(score));
+        setText("frame-run", emptyState ? "baseline waiting" : "baseline " + shortRun(run.run_id));
+        setText("frame-score", emptyState ? "sync needed" : "score " + score);
+        setText("health-score", emptyState ? "--" : String(score));
         const signals = document.getElementById("signal-list");
         if (signals) {
           const rows = checks.slice(0, 5).map(function(check){

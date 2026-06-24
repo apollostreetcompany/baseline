@@ -86,7 +86,7 @@ Required before a Bead 38 production deploy:
 - Do not deploy a Worker version unless readback shows the complete production binding set or all Worker-only secret values are rehydrated from an approved secret manager.
 - Treat `cf workers scripts content update` and `wrangler deploy --keep-vars` as unsafe for this Worker until proven otherwise in a non-production clone with secret-binding readback.
 - The next deploy attempt should start from current healthy version `0ddb077d-5188-4256-98eb-baf449a30d4c`, not from the stripped-binding versions above.
-- Claude Fable 5 `subreview` retry completed at `/tmp/baseline-subreview-bead38-fable5-working-20260612T0538Z/` with 1 completed reviewer and 0 failures. Do not deploy Bead 38 until the review blockers are addressed or intentionally accepted: durable magic-link delivery, live buyer Klaviyo flow trigger verification, failed-outbox retry/drain handling, master-event PII/redaction policy, structural `stripe_founder` preservation, and dashboard empty-state demo-score removal.
+- Claude Fable 5 `subreview` retry completed at `/tmp/baseline-subreview-bead38-fable5-working-20260612T0538Z/` with 1 completed reviewer and 0 failures. The 2026-06-24 source follow-up fixed durable checkout magic-link delivery and dashboard empty-state demo-score removal. Do not deploy Bead 38 until the remaining blockers are addressed or intentionally accepted: live buyer Klaviyo flow trigger verification, failed-outbox retry/drain handling, master-event PII/redaction policy, structural `stripe_founder` preservation, and binding-preserving Worker upload readback.
 
 ## 2026-06-11 Checkout Router Production Deploy
 
@@ -100,7 +100,7 @@ Implementation result:
 - Stripe webhook completion tags founder-code entitlements as `stripe_founder`, includes coupon metadata in lifecycle/audit properties, and reprocesses failed event rows on Stripe retry.
 - Klaviyo receives redacted buyer lifecycle events and master webhook notifications with event type, object id, plan, coupon presence, account id when known, and email-presence booleans.
 - Datafa.st receives checkout start, coupon-applied, redirect, success-return, and cancel-return goals; the Worker carries the `datafast_visitor_id` cookie into Stripe metadata when present.
-- Local `cf dev` requires `@cloudflare/wrangler-bundler`; the dependency is declared so local Worker smokes work in fresh worktrees.
+- Local `cf dev` works through the direct `wrangler` dev dependency; stale `@cloudflare/wrangler-bundler` was removed after its nested Wrangler/Miniflare chain failed the high-severity audit gate.
 
 Pre-deploy validation:
 

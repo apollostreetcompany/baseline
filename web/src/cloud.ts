@@ -764,7 +764,6 @@ async function stripeWebhook(request: Request, env: CloudEnv, ctx?: ExecutionCon
         coupon_present: Boolean(metadata.coupon_code),
         coupon_code: String(metadata.coupon_code || ""),
         customer_email_present: Boolean(email),
-        customer_email: email || "",
         site_id: "trackbaseline.com",
         language: "en"
       }));
@@ -1194,14 +1193,15 @@ async function processStripeEvent(sql: NeonQueryFunction<false, false>, event: R
       if (userID) {
         const link = await createMagicLink(sql, env, userID, accountID, email, "checkout");
         checkoutMagicLink = link.url;
-        const magicDelivery = sendKlaviyoAuthEvent(env, email, "Baseline Magic Link", link.url, {
+        const magicQueued = await queueAndDispatchLifecycleEvent(sql, env, ctx, "klaviyo", "Baseline Magic Link", "account", accountID, "customer", {
           purpose: "checkout",
+          stripe_event_id: String(event.id || ""),
           account_id: accountID,
           plan,
           coupon_present: Boolean(couponCode),
           coupon_code: couponCode || ""
-        });
-        if (ctx) ctx.waitUntil(magicDelivery); else await magicDelivery;
+        }, link.url, true);
+        if (!magicQueued) throw new Error("checkout magic-link delivery failed");
       }
     }
     await queueAndDispatchLifecycleEvent(sql, env, ctx, "klaviyo", "Baseline Subscription Started", "account", accountID, "customer", {
@@ -1328,12 +1328,15 @@ async function queueAndDispatchLifecycleEvent(
   subjectID: string,
   destination: string,
   payload: Record<string, unknown>,
-  magicLink = ""
-): Promise<void> {
+  magicLink = "",
+  waitForDelivery = false
+): Promise<boolean> {
   const queued = await queueLifecycleEvent(sql, provider, eventName, subjectType, subjectID, destination, payload);
-  if (!queued) return;
+  if (!queued) return true;
   const delivery = dispatchLifecycleEvent(sql, env, queued.idempotencyKey, eventName, subjectType, subjectID, destination, payload, magicLink);
+  if (waitForDelivery) return await delivery;
   if (ctx) ctx.waitUntil(delivery); else await delivery;
+  return true;
 }
 
 async function dispatchLifecycleEvent(
@@ -1346,7 +1349,7 @@ async function dispatchLifecycleEvent(
   destination: string,
   payload: Record<string, unknown>,
   magicLink = ""
-): Promise<void> {
+): Promise<boolean> {
   try {
     const email = await lifecycleDestinationEmail(sql, env, subjectType, subjectID, destination);
     if (!email) throw new Error("lifecycle destination email unavailable");
@@ -1358,6 +1361,7 @@ async function dispatchLifecycleEvent(
       set status = 'sent', attempts = attempts + 1, last_error = null, updated_at = now()
       where idempotency_key = ${idempotencyKey}
     `;
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "unknown lifecycle dispatch error";
     await sql`
@@ -1365,6 +1369,7 @@ async function dispatchLifecycleEvent(
       set status = 'failed', attempts = attempts + 1, last_error = ${message}, next_attempt_at = now() + interval '5 minutes', updated_at = now()
       where idempotency_key = ${idempotencyKey}
     `;
+    return false;
   }
 }
 
