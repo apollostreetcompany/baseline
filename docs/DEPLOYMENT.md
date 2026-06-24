@@ -6,10 +6,10 @@
 - URL: https://trackbaseline.com
 - Fallback Worker URL: https://baseline-ai.ryan-borker.workers.dev
 - Current Version ID: `0ddb077d-5188-4256-98eb-baf449a30d4c`
-- Current Deployment ID: `914c9007-c221-4ebd-bb6a-7b8ed1b452b7`
+- Current Deployment ID: `22aeebf6-fd69-43c3-a32b-1770c3de1da4`
 - Current production source branch: `origin/main` at merge commit `66e897b77ef96484650490cfd3196aff66bd20ad`; Worker version `0ddb077d-5188-4256-98eb-baf449a30d4c` was originally uploaded from implementation commit `48057c27d64edba262dbfa46d747ef7334183793` before PR #12 was squash-merged.
 - Current production source worktree: `/Users/kikimac/.hermes/repos/apollostreetcompany/baseline-bead-35-checkout-router`
-- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, Bead 35 `cf` deploy-tooling correction, and the Bead 37 checkout router with founder-code Stripe Checkout, Klaviyo/Datafa.st routing, and failed-webhook retry handling.
+- Notes: current production combines Bead 32 Codex plugin docs, Bead 33 SEO/lead-magnet acquisition routes, Bead 34 commercial-viability checkout/pilot/admin paths, the Bead 34 public website clarity pass, the Claude Fable 5 anti-slop copy polish, Bead 35 `cf` deploy-tooling correction, and the Bead 37 checkout router with founder-code Stripe Checkout, Klaviyo/Datafa.st routing, and failed-webhook retry handling. Bead 38 is implemented locally but not live; deploy attempts were rolled back because new Worker versions lost secret bindings.
 
 ## Cloudflare CLI Policy
 
@@ -32,6 +32,62 @@ For Worker version/deployment changes, use the `cf workers versions` and `cf wor
 
 For changed Worker code, the Cloudflare REST upload path requires a `multipart/form-data` Worker upload with `metadata.main_module`, compatibility date, bindings, and code parts. Current `cf workers versions create --body ...` dry-runs serialize the body as JSON and cannot express the multipart upload by themselves. If no first-class `cf` multipart wrapper is available, use a reviewed Cloudflare API version upload with a bundled module, `keep_assets: true`, inherited secret bindings, and then use `cf workers deployments create` for the traffic switch/readback. Do not use `wrangler deploy` as the production mutation path.
 
+## 2026-06-12 Bead 38 Checkout Email and Dashboard Status
+
+Bead 38 fixes the completed-checkout/no-email diagnosis and dashboard empty state in code, but it is not deployed to production yet.
+
+Implementation result:
+
+- Sent a fresh `/api/auth/magic-link` request for `apollostreetcompany@gmail.com`; Klaviyo accepted the `Baseline Magic Link` event.
+- Klaviyo API readback showed `Baseline Magic Link` and `Baseline Subscription Started` have no flow triggers. The only live relevant flow is `Apollo Master Notification`.
+- Sent a one-off `Apollo Master Notification` event to `apollostreetcompany@gmail.com` carrying the latest magic link in the template's rendered `payment_link_id` field; Klaviyo later recorded a `Received Email` event from flow `YgcrBp`.
+- Drained the two pending production `lifecycle_event_outbox` rows for the account by sending `Baseline Subscription Started` and `Baseline Subscription Updated` events to Klaviyo and marking both rows `sent` after HTTP `202`.
+- Updated Worker code so future checkout completion creates a canonical `Baseline Magic Link` event, lifecycle outbox rows are dispatched immediately and marked `sent`/`failed`, master notifications use the live `Apollo Master Notification` metric, `stripe_founder` retention survives subscription sync, and the dashboard empty state shows the exact local-run -> accept -> sync path.
+
+Validation before deploy attempt:
+
+```sh
+npm --prefix web run typecheck
+make verify
+git diff --check
+npm --prefix web audit --audit-level=high
+curl -fsS http://127.0.0.1:8787/api/runs/latest
+curl -fsS http://127.0.0.1:8787/api/runs/timeline
+curl -fsS http://127.0.0.1:8787/dashboard
+```
+
+Local visual evidence:
+
+- `/tmp/baseline-bead-38-dashboard-empty-desktop.png`
+- `/tmp/baseline-bead-38-dashboard-empty-mobile.png`
+
+Deploy attempts and rollback:
+
+```sh
+web/node_modules/.bin/esbuild web/src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=/tmp/baseline-bead38-worker.js
+curl -X POST .../workers/scripts/baseline-ai/versions?bindings_inherit=strict ...
+cf workers scripts content update --script-name baseline-ai --metadata '{"main_module":"main.js"}' --files /tmp/main.js
+npx wrangler deploy --dry-run --keep-vars --message "Bead 38 checkout email dashboard" --tag bead-38-checkout-email-dashboard
+npx wrangler deploy --keep-vars --message "Bead 38 checkout email dashboard" --tag bead-38-checkout-email-dashboard
+cf workers deployments create --script-name baseline-ai --dry-run --body '{"strategy":"percentage","versions":[{"version_id":"0ddb077d-5188-4256-98eb-baf449a30d4c","percentage":100}]}'
+cf workers deployments create --script-name baseline-ai --body '{"strategy":"percentage","versions":[{"version_id":"0ddb077d-5188-4256-98eb-baf449a30d4c","percentage":100}]}'
+```
+
+Results:
+
+- Version `66586265-a299-49d1-90cd-a96fc0550034` uploaded but read back with only `APP_URL`; it was not deployed.
+- Version `b734e084-b44d-47e8-ad1f-0657093a5e08` uploaded but read back with no bindings; it was not deployed.
+- `cf workers scripts content update` created deployment `31a65148-5e4f-46b9-8881-a8fb69a7a9e4` / version `a61f7ccb-7f32-4764-a735-b5b3e1cf342b`, but live health showed all secret-backed flags `false`; rollback deployment `74d16194-de35-44a7-bc81-7eafdd30fe6b` restored version `0ddb077d-5188-4256-98eb-baf449a30d4c`.
+- `wrangler deploy --keep-vars` created deployment `6f55fa13-a01b-4e89-aecc-ea896d872462` / version `2749f332-e362-4d21-b4a3-de2134db40b8`, but live health again showed all secret-backed flags `false`; rollback deployment `22aeebf6-fd69-43c3-a32b-1770c3de1da4` restored version `0ddb077d-5188-4256-98eb-baf449a30d4c`.
+- Current production health is recovered on apex, `www`, and workers.dev: `db:true`, `stripe:true`, `lifecycle_email:true`, `pro_auth:true`, `pro_tokens:true`, `stripe_webhook:true`.
+
+Required before a Bead 38 production deploy:
+
+- Do not deploy a Worker version unless readback shows the complete production binding set or all Worker-only secret values are rehydrated from an approved secret manager.
+- Treat `cf workers scripts content update` and `wrangler deploy --keep-vars` as unsafe for this Worker until proven otherwise in a non-production clone with secret-binding readback.
+- The next deploy attempt should start from current healthy version `0ddb077d-5188-4256-98eb-baf449a30d4c`, not from the stripped-binding versions above.
+- Claude Fable 5 `subreview` retry completed at `/tmp/baseline-subreview-bead38-fable5-working-20260612T0538Z/` with 1 completed reviewer and 0 failures. The 2026-06-24 source follow-up fixed durable checkout magic-link delivery and dashboard empty-state demo-score removal. Do not deploy Bead 38 until the remaining blockers are addressed or intentionally accepted: live buyer Klaviyo flow trigger verification, failed-outbox retry/drain handling, master-event PII/redaction policy, structural `stripe_founder` preservation, and binding-preserving Worker upload readback.
+
 ## 2026-06-11 Checkout Router Production Deploy
 
 Bead 37 adds a commercially usable checkout router while preserving the email-first, webhook-authoritative billing model.
@@ -44,7 +100,7 @@ Implementation result:
 - Stripe webhook completion tags founder-code entitlements as `stripe_founder`, includes coupon metadata in lifecycle/audit properties, and reprocesses failed event rows on Stripe retry.
 - Klaviyo receives redacted buyer lifecycle events and master webhook notifications with event type, object id, plan, coupon presence, account id when known, and email-presence booleans.
 - Datafa.st receives checkout start, coupon-applied, redirect, success-return, and cancel-return goals; the Worker carries the `datafast_visitor_id` cookie into Stripe metadata when present.
-- Local `cf dev` requires `@cloudflare/wrangler-bundler`; the dependency is declared so local Worker smokes work in fresh worktrees.
+- Local `cf dev` works through the direct `wrangler` dev dependency; stale `@cloudflare/wrangler-bundler` was removed after its nested Wrangler/Miniflare chain failed the high-severity audit gate.
 
 Pre-deploy validation:
 
