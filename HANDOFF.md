@@ -1,5 +1,14 @@
 # HANDOFF.md - Baseline.ai
 
+## Bead 39 local delivery — 2026-09-17
+
+- Latest work: `codex/feat/bead-39-james-memory-monitor`; locally delivered; source is offered as a draft PR and remains unmerged. Historical thread notes below remain unchanged.
+- Installed separately as `~/.local/bin/baseline-james`, with `~/.baseline-james-memory` and loaded `com.apollostreet.james-memory-baseline`; the existing OpenClaw installation is untouched.
+- Two real tool-free Astra snapshot pilots yielded valid FAIL/75 measurements (one real missing-memory lesson), comparable history and 2,440 tokens each. Eleven focused tests/full Go suite/build passed; canonical Astra High closeout is clean. Three infrastructure failures remain retained, no Good accepted and no cloud outbox entries.
+- Evidence and coverage limits are in [Bead 39 continuity](CONTINUITY.md#bead-39--james-memory-monitor-2026-09-17) and [monitor contract](docs/JAMES-MEMORY-MONITOR.md). Private runtime receipts are under `/Users/future/.hermes/receipts/james-v1-20260917/baseline-memory/`; closeout review is the sibling `checkpoint-4-baseline-runtime-closeout/receipt.json`.
+- Next: observe the next 08:50 Asia/Tokyo due tick (within five minutes while awake), which has not yet elapsed; review the draft PR before merge. Do not reissue old failed request IDs, accept a Good, or claim production Oracle/session retrieval coverage from these pilots.
+
+
 ## Current Thread
 - Working branch: `codex/fix/bead-38-checkout-email-dashboard`.
 - Current request history:
