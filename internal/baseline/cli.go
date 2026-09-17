@@ -24,6 +24,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	switch args[0] {
+	case "memory":
+		return cmdMemory(ctx, args[1:], stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout, "baseline %s\n", Version)
 		return 0
@@ -89,6 +91,8 @@ func printHelp(w io.Writer) {
 Usage:
   baseline --version
   baseline version
+  baseline memory run --source-profile PATH --cases FILE --request-id ID --hermes-python PATH --hermes-source PATH
+  baseline memory history
   baseline setup [--json]
   baseline run [--json]
   baseline report [RUN_ID]
