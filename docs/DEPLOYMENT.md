@@ -13,6 +13,12 @@
 
 ## Cloudflare CLI Policy
 
+The public OpenPanel browser bundle is checked in at `web/public/assets/openpanel.js`.
+After changes to `web/browser/` or its pinned dependencies, run `npm ci`,
+`npm run build:analytics`, and `npm run test:analytics` in `web/`, then include
+the rebuilt asset and its license notice in the reviewed change. This does not
+authorize a deployment.
+
 Current rule: use `cf` for Cloudflare operations. Do not run new production deploys through `wrangler` or `npm run deploy`.
 
 Required operator checks before Cloudflare create/update/delete operations:

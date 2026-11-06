@@ -34,6 +34,10 @@ jobs:
         run: npm ci
         working-directory: web
 
+      - name: Build and test public analytics
+        run: npm run build:analytics && npm run test:analytics && git diff --exit-code -- public/assets/openpanel.js public/assets/openpanel.js.LEGAL.txt
+        working-directory: web
+
       - name: Verify CLI, Worker, and macOS app
         run: make verify-all
 
