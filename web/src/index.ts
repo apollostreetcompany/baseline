@@ -1877,7 +1877,7 @@ function privacyPage(env: Env): string {
     description: "Baseline privacy notes for local-first agent health checks and redacted cloud sync.",
     path: "/privacy"
   }, `
-    <main class="doc"><h1>Privacy</h1><p>Baseline is local-first. Raw prompts, raw outputs, and repository paths stay on the workstation by default. Cloud sync stores run summaries, health scores, findings, workspace hashes, and redacted observation hashes.</p><p>Raw output export happens only if the operator explicitly enables <code>allow_raw_output</code> in <code>~/.baseline/config.json</code>. API tokens can be revoked by deleting them from the local config and dashboard. Synthetic and user-provided redaction checks run before export.</p></main>
+    <main class="doc"><h1>Privacy</h1><p>Baseline is local-first. Raw prompts, raw outputs, and repository paths stay on the workstation by default. Cloud sync stores run summaries, health scores, findings, workspace hashes, and redacted observation hashes.</p><p>Raw output export happens only if the operator explicitly enables <code>allow_raw_output</code> in <code>~/.baseline/config.json</code>. API tokens can be revoked by deleting them from the local config and dashboard. Synthetic and user-provided redaction checks run before export.</p><p>Our public website uses Datafast and OpenPanel to understand visits. OpenPanel records public page paths without query strings or fragments, respects Global Privacy Control and Do Not Track, and does not run on account or admin pages.</p></main>
   `);
 }
 
@@ -2204,6 +2204,7 @@ function layout(env: Env, meta: PageMeta, body: string): string {
     data-website-id="dfid_PYprhfTkwwQKhkzRUhVtO"
     data-domain="trackbaseline.com"
     src="https://datafa.st/js/script.js"></script>
+  <script defer src="/assets/openpanel.js"></script>
 </head>
 <body>
   <header class="nav">

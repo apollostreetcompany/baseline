@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "cf dev",
     "deploy": "node -e \"console.error('Use the cf Worker deployment workflow in docs/DEPLOYMENT.md; do not deploy with npm run deploy.'); process.exit(1)\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:analytics": "esbuild browser/entry.js --bundle --minify --format=iife --outfile=public/assets/openpanel.js --legal-comments=external && node scripts/clean-legal.mjs",
+    "test:analytics": "node --test tests/analytics.test.js"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.0.2",
+    "@openpanel/web": "1.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260511.1",
+    "esbuild": "0.28.1",
     "typescript": "^5.9.3",
     "wrangler": "^4.104.0"
   }
